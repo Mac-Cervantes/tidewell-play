@@ -4,7 +4,7 @@ import { GLTFLoader } from '../lib/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from '../lib/addons/utils/SkeletonUtils.js';
 import * as store from './store.js';   // STORE: the walk-in general store (the inside loads later from interior.js)
 import { mergeVertices } from '../lib/addons/utils/BufferGeometryUtils.js';
-import { VERSION_LABEL, RARITY, FISH, CROPS, CROP_ORDER, ITEMS, SHOP, DEBUG, BAIT, BAIT_ORDER, DECOR, DECOR_ORDER, STARTER_KIT, ORDER_FOLK, ORDERS, makeOrder, CARGO, TOOLS as GEAR, TOOL_ORDER as GEAR_ORDER, CLEAR_NEEDS, HIT_SECONDS, DIG, XP, LEVELS, xpInto, levelFor, rankFor, unlockLevel, rollFish, seasonInfo, timeOfDay, SIGHTS, rollSize } from './data.js';
+import { VERSION_LABEL, RARITY, FISH, CROPS, CROP_ORDER, ITEMS, SHOP, DEBUG, BAIT, BAIT_ORDER, DECOR, DECOR_ORDER, STARTER_KIT, ORDER_FOLK, ORDERS, makeOrder, orderFolk, CARGO, TOOLS as GEAR, TOOL_ORDER as GEAR_ORDER, CLEAR_NEEDS, HIT_SECONDS, DIG, XP, LEVELS, xpInto, levelFor, rankFor, unlockLevel, rollFish, seasonInfo, timeOfDay, SIGHTS, rollSize, RODS } from './data.js';
 import { paintSkin, SKIN, HAIR_COLORS, CLOTH } from './look.js';
 import { HAIR3D, hairFor } from './hair3d.js';
 import { wearList, wearFor, hairUnderHat, HATS } from './wear3d.js';
@@ -461,7 +461,7 @@ function buildWorld() {
   const T = (n, x, z, s = 1, r = rnd() * 6.28) => place('nature', n, x, z, { s, r });
   [['tree_oak', -12, 0.5], ['tree_default', 10.6, 3.4], ['tree_detailed', 11.8, -0.4], ['tree_oak', -12.5, 5.6],
    ['tree_default', 13.4, 5.8], ['tree_detailed', -10.8, -1.8], ['tree_pineRoundA', 14.5, 1.2], ['tree_oak', 9.4, 6.2]]
-    .forEach(([n, x, z]) => T(n, x, z, 1.15 + rnd() * 0.2));
+    .forEach(([n, x, z]) => T(n, spots.onBank(x, z) ? spots.innerBank(z) + 0.5 : x, z, 1.15 + rnd() * 0.2));   // FISHING: never in the river
   const flowers = ['flower_redA', 'flower_yellowA', 'flower_purpleA'];
   for (const [cx, cz] of [[3.6, 5.6], [5.8, 1.6], [7.2, 1.4], [-5.5, 4.4], [1.8, 1.2], [-1.6, 6.6], [6.0, 5.8]]) {
     for (let k = 0; k < 5; k++) wildPlant(T(flowers[(((k + Math.round(cx)) % 3) + 3) % 3], cx + (rnd() - 0.5) * 1.2, cz + (rnd() - 0.5) * 0.8, 1.1));
@@ -1127,7 +1127,7 @@ function beginCast(target) {
 }
 function landFish() {
   if (fishing.state !== 'bite') return;
-  const fish = rollFish(fishing.bait || 'worm', todKey, Math.random, { place: fishing.place, rain: weather.level > 0 });   // FISHING: by place, season and rain
+  const fish = rollFish(fishing.bait || 'worm', todKey, Math.random, { place: fishing.place, rain: weather.level > 0, rocks: fishing.place === 'river' && spots.nearRocks(fishing.land.x, fishing.land.z) });   // river rocks are hot spots (v0.1.61)   // FISHING: by place, season and rain
   fishing.rec = dex.record(fish, rollSize(fish));   // FISHING: its size, and your biggest
   setFish('catch'); audio.play('catch');
   if (!fishIcon[fish.id]) startFishJump(fishing.land.x, fishing.land.z, fish);   // picture not ready (very slow connection): the old 3D jump
@@ -2247,10 +2247,11 @@ function renderLevel() {
   document.getElementById('lvNum').textContent = S.level;
   document.getElementById('lvBadge').setAttribute('aria-label', `Town level ${S.level}, ${have} of ${need} XP. Show what levels unlock`);
 }
-function unlockName(u) { if (u.tool) return GEAR[u.tool].name; if (u.decor) return DECOR[u.decor].name; return u.later || u.place ? u.later || u.place : ITEMS[u.item].kind === 'seed' ? ITEMS[u.item].name : u.item === 'worm' ? 'Worms' : u.item === 'shrimp' ? 'Shrimp bait' : ITEMS[u.item].name; }
-function unlockWhere(u) { if (u.tool) return store.isOpen() ? 'Nell\u2019s store' : 'Higgins'; if (u.decor) return 'Nell\u2019s store'; if (u.store) return 'Left of the order board'; return u.later ? 'Coming later' : u.ship ? 'At the dock' : u.land ? 'FOR SALE sign by the gate' : u.place ? 'By the order board' : ITEMS[u.item].kind === 'seed' ? (unlockLevel(u.item) >= 2 ? 'Rosa\u2019s Flowers' : 'Higgins') : 'Fishel'; }
+function unlockName(u) { if (u.rod) return RODS[u.rod].name; if (u.tool) return GEAR[u.tool].name; if (u.decor) return DECOR[u.decor].name; return u.later || u.place ? u.later || u.place : ITEMS[u.item].kind === 'seed' ? ITEMS[u.item].name : u.item === 'worm' ? 'Worms' : u.item === 'shrimp' ? 'Shrimp bait' : ITEMS[u.item].name; }
+function unlockWhere(u) { if (u.rod) return 'Fishel\u2019s Rods tab'; if (u.tool) return store.isOpen() ? 'Nell\u2019s store' : 'Higgins'; if (u.decor) return 'Nell\u2019s store'; if (u.store) return 'Left of the order board'; return u.later ? 'Coming later' : u.ship ? 'At the dock' : u.land ? 'FOR SALE sign by the gate' : u.place ? 'By the order board' : ITEMS[u.item].kind === 'seed' ? (unlockLevel(u.item) >= 2 ? 'Rosa\u2019s Flowers' : 'Higgins') : 'Fishel'; }
 function unlockPic(u) {
   if (u.later) return `<span class="lvlater">${svg('sun', '#854f0b', 34)}</span>`;
+  if (u.rod) return `<span class="lvlater" style="background:#dff1fb;border-color:#3e8fe0">${svg('rod', '#2b2140', 34)}</span>`;
   if (u.tool) return `<span class="lvlater" style="background:#efe6d8;border-color:#8a5a34">${svg(u.tool, '#6e4220', 34)}</span>`;
   if (u.store) return `<span class="lvlater" style="background:#fde4dc;border-color:#c0392b">${svg('decor', '#a8322a', 34)}</span>`;
   if (u.decor) return `<span class="lvlater" style="background:#dcecfb;border-color:#3e8ee8">${ICON[u.decor] ? svg(u.decor, '#2f6fb8', 34) : svg('decor', '#2f6fb8', 34)}</span>`;
@@ -2291,7 +2292,7 @@ function tickLevelUp() {
 function renderRoadmap() {
   const { have, need } = xpInto(S.xp || 0);
   document.getElementById('rmNow').innerHTML = `${ringSVG(S.level, have / need, 48)}<div><b>Town level ${S.level} \u00b7 ${rankFor(S.level)}</b><br><span>${have} / ${need} XP to level ${S.level + 1}</span></div>`;
-  const kind = (u) => u.later || u.place || u.tool || u.decor ? 'place' : ITEMS[u.item].kind === 'seed' ? 'seed' : 'fish';   // tools broke this list from v0.1.48 until v0.1.55
+  const kind = (u) => u.later || u.place || u.tool || u.decor || u.rod ? 'place' : ITEMS[u.item].kind === 'seed' ? 'seed' : 'fish';   // tools broke this list from v0.1.48 until v0.1.55
   const groups = [['Dock', 'levels 1\u20134', 1, 4], ['Village', 'levels 5\u20139', 5, 9], ['Harbor town', 'levels 10\u201319', 10, 19], ['City', 'level 20+', 20, 99]];
   document.getElementById('rmList').innerHTML = groups.map(([rank, sub, a, b]) => {
     const lvs = Object.keys(LEVELS).map(Number).filter(l => l >= a && l <= b);
@@ -3188,11 +3189,21 @@ function updateBoardNotes() {
 const nearBoard = () => Math.hypot(player.pos.x - BOARD.x, player.pos.z - (BOARD.z + 0.5)) < 1.6;
 function orderReady(o) { return !o.empty && o.items.every(([id, n]) => invCount(id) >= n); }
 function refillMs() { return settings.debug ? DEBUG.orderRefillSeconds * 1000 : ORDERS.refillMinutes * 60000; }
-// keep 6 slots; an empty slot gets a new order once its timer runs out
+// one order per townsperson who's open (Mac, v0.1.61); a filled or tossed one comes back from the same person once its timer runs out
 function tickOrders() {
-  const st = S.orders, now = Date.now(); let changed = false;
-  while (st.slots.length < ORDERS.slots) { st.slots.push(makeOrder(Math.random, st.next++, S.level)); changed = true; }
-  st.slots = st.slots.map(o => { if (o.empty && now >= o.at) { changed = true; return makeOrder(Math.random, st.next++, S.level); } return o; });
+  const st = S.orders, now = Date.now(), folk = orderFolk(S.level); let changed = false;
+  // older saves: keep each person's first order (a ready one first), drop the rest; waiting slots without a person go
+  const keep = [], seen = new Set();
+  for (const o of [...st.slots].sort((a, b) => orderReady(b) - orderReady(a))) {
+    if (!o.who || !folk.includes(o.who) || seen.has(o.who)) { if (!o.empty || o.who) changed = true; continue; }
+    seen.add(o.who); keep.push(o);
+  }
+  if (keep.length !== st.slots.length) changed = true;
+  st.slots = folk.map(w => keep.find(o => o.who === w)).filter(Boolean);
+  for (const w of folk) if (!seen.has(w)) { st.slots.push(makeOrder(Math.random, st.next++, S.level, w)); changed = true; }
+  st.slots = st.slots.map(o => { if (o.empty && now >= o.at) { changed = true; return makeOrder(Math.random, st.next++, S.level, o.who); } return o; });
+  // rewards you haven't unlocked yet (shrimp before level 3, the Glow Lure before 6) become a friendship heart
+  for (const o of st.slots) if (!o.empty && o.extra.kind === 'item' && unlockLevel(o.extra.item) > S.level) { o.extra = { kind: 'heart' }; changed = true; }
   if (changed) { storeSave(S, settings.debug); updateBoardNotes(); if (!document.getElementById('orders').hidden) renderOrders(); }
   renderTrack();
 }
@@ -3219,7 +3230,7 @@ function renderOrders() {
 }
 function clearSlot(id) {
   const i = S.orders.slots.findIndex(o => o.id === id);
-  if (i >= 0) S.orders.slots[i] = { empty: true, at: Date.now() + refillMs() };
+  if (i >= 0) S.orders.slots[i] = { empty: true, who: S.orders.slots[i].who, at: Date.now() + refillMs() };
   if (S.orders.pinned === id) S.orders.pinned = null;
 }
 document.getElementById('ordList').addEventListener('click', (e) => {
@@ -3459,7 +3470,7 @@ function camTarget() {
 const CAM_EDGE = 2.2;
 function camClampX(x) {
   const dist = camOffset.length(), hw = dist * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2) * camera.aspect;
-  const lo = landMinX() - CAM_EDGE - 2.2 /* FISHING: far enough left to see the river's other bank */ + hw, hi = landMaxX() + CAM_EDGE - hw;
+  const lo = landMinX() - CAM_EDGE - 2.2 + spots.farShift() /* FISHING: far enough left to see the river's other bank */ + hw, hi = landMaxX() + CAM_EDGE - hw;
   return lo > hi ? (lo + hi) / 2 : Math.max(lo, Math.min(hi, x));
 }
 function updateCamOffset(dt, snap) {
@@ -3565,7 +3576,7 @@ function update(dt) {
   updateCamOffset(dt);
   // the focus point follows the player; the camera orbits it at the current tilt,
   // so a tilt change is one smooth swing instead of a turn followed by a drop
-  camFocus.lerp(camPos.set(camClampX(player.pos.x), player.y, player.pos.z), 1 - Math.exp(-dt * 6));
+  camFocus.lerp(camPos.set(camClampX(player.pos.x + spots.camLean(player.pos.x, player.pos.z)), player.y, player.pos.z), 1 - Math.exp(-dt * 6));   // FISHING: by the river the view leans left so its far bank shows
   camera.position.copy(camFocus).add(camOffset);
   _camLook.set(camFocus.x, camFocus.y + 1.0, camFocus.z);
   if (ward.blend > 0) { wardCam(_wardPos, _wardLook); const e = ward.blend * ward.blend * (3 - 2 * ward.blend); camera.position.lerp(_wardPos, e); _camLook.lerp(_wardLook, e); }

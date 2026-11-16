@@ -11,7 +11,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Tidewell">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
-<meta name="theme-color" content="#2fa4d8">
+<meta name="theme-color" content="#000000">
 <title>Tidewell</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet">
@@ -19,7 +19,7 @@
   [hidden] { display: none !important; }
   * { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
   button, .seg { touch-action: manipulation; }
-  html, body { margin: 0; height: 100%; overflow: hidden; background: #cdeeff; touch-action: none;
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #000;   /* black: iPhone paints the home-screen app's status bar with this (Mac) */ touch-action: none;
     -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
     font-family: 'Fredoka', system-ui, sans-serif; color: #2b2140; }
   #sky { position: fixed; inset: 0; transition: background 0.8s; }
@@ -359,17 +359,17 @@
 
 #saleBubble { position: fixed; z-index: 6; transform: translate(-50%, -100%); pointer-events: none; }
 #saleBubble.pop .sb { animation: sbpop .35s cubic-bezier(.3,1.6,.5,1) both, sbbob 1.6s ease-in-out .35s infinite; }
-#saleBubble .sb { background: #fffdf5; border: 3px solid #2b2140; border-radius: 22px; padding: 8px 14px 10px; text-align: center; box-shadow: 0 5px 0 rgba(43,33,64,.25); }
-#saleBubble .sbrow { display: flex; align-items: center; justify-content: center; gap: 8px; }
-#saleBubble .sbrow b { font-size: 44px; line-height: 1; letter-spacing: -1px; color: #2b2140; }
-#saleBubble .scoin { width: 38px; height: 38px; border-radius: 50%; background: #f4c542; border: 4px solid #b8860b; box-sizing: border-box; position: relative; flex: none; }
-#saleBubble .scoin::after { content: ''; position: absolute; left: 50%; top: 22%; bottom: 22%; width: 5px; margin-left: -2.5px; background: #b8860b; border-radius: 2px; }
-#saleBubble .sblv { position: relative; display: inline-flex; width: 40px; height: 40px; margin-top: 6px; border-radius: 50%; background: #fffdf5; border: 4px solid #7cc957; box-shadow: 0 0 0 2px #2b2140; align-items: center; justify-content: center; font-weight: 700; font-size: 22px; box-sizing: border-box; color: #2b2140; }
-#saleBubble .lock, #saleBubble .ok { position: absolute; right: -18px; bottom: -6px; width: 22px; height: 22px; border-radius: 50%; background: #e2574c; border: 2px solid #2b2140; display: flex; align-items: center; justify-content: center; }
+#saleBubble .sb { display: flex; align-items: center; gap: 8px; background: #fffdf5; border: 2.5px solid #2b2140; border-radius: 16px; padding: 4px 10px; box-shadow: 0 4px 0 rgba(43,33,64,.25); }   /* one row (Mac, v0.1.61, mockup B) */
+#saleBubble .sbrow { display: flex; align-items: center; justify-content: center; gap: 6px; }
+#saleBubble .sbrow b { font-size: 26px; line-height: 1; letter-spacing: -0.5px; color: #2b2140; }
+#saleBubble .scoin { width: 24px; height: 24px; border-radius: 50%; background: #f4c542; border: 3px solid #b8860b; box-sizing: border-box; position: relative; flex: none; }
+#saleBubble .scoin::after { content: ''; position: absolute; left: 50%; top: 22%; bottom: 22%; width: 3px; margin-left: -1.5px; background: #b8860b; border-radius: 2px; }
+#saleBubble .sblv { position: relative; display: inline-flex; width: 28px; height: 28px; border-radius: 50%; background: #fffdf5; border: 3px solid #7cc957; box-shadow: 0 0 0 2px #2b2140; align-items: center; justify-content: center; font-weight: 700; font-size: 15px; box-sizing: border-box; color: #2b2140; }
+#saleBubble .lock, #saleBubble .ok { position: absolute; right: -10px; bottom: -5px; width: 16px; height: 16px; border-radius: 50%; background: #e2574c; border: 2px solid #2b2140; display: flex; align-items: center; justify-content: center; }
 #saleBubble .ok { background: #4caf50; }
 #saleBubble .lock[hidden], #saleBubble .ok[hidden] { display: none; }
-#saleBubble svg { width: 13px; height: 13px; }
-#saleBubble .sbtail { width: 0; height: 0; margin: 0 auto; border-left: 14px solid transparent; border-right: 14px solid transparent; border-top: 16px solid #2b2140; }
+#saleBubble svg { width: 10px; height: 10px; }
+#saleBubble .sbtail { width: 0; height: 0; margin: 0 auto; border-left: 9px solid transparent; border-right: 9px solid transparent; border-top: 10px solid #2b2140; }
 @keyframes sbpop { from { transform: scale(.3) translateY(20px); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes sbbob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
 
@@ -465,7 +465,7 @@
 
 <div id="menu" class="sheet" hidden>
   <div class="card">
-    <h2>Menu</h2>
+    <div class="shophead"><h2>Menu</h2><button class="xbtn" data-close aria-label="Close"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2b2140" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
     <div class="grid">
       <button data-open="bag">Bag</button><button id="menuOrders">Orders</button><button data-soon="Market">Market</button><button data-soon="Album">Album</button>
       <button id="menuWard">Wardrobe</button><button data-soon="Map">Map</button><button data-soon="Friends">Friends</button><button data-open="settings">Settings</button><button id="menuFish">Fish Book</button>
@@ -476,7 +476,7 @@
 
 <div id="bag" class="sheet" hidden>
   <div class="card">
-    <h2>Bag <span class="sub" id="bagCoins"></span></h2>
+    <div class="shophead"><h2>Bag <span class="sub" id="bagCoins"></span></h2><button class="xbtn" data-close aria-label="Close"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2b2140" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
     <div id="bagList" class="list"></div>
     <p class="note" id="bagCollection"></p>
     <button class="close" data-close>Close</button>
@@ -488,7 +488,7 @@
     <div class="shophead"><h2>Fishel's Bait <span class="sub" id="baitCoins"></span></h2><button class="xbtn" data-close aria-label="Close"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2b2140" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
     <p class="greet" id="baitGreet">Fish are picky, friend. Better bait, better fish.</p>
     <div class="bcards" id="baitCards"></div>
-    <p class="note center">Your rod uses your best bait first, one per cast. No bait, no cast: Fishel hands out a free pack every day, and the worm bucket by the dock fills up by itself.</p>
+    <p class="note center">Your rod uses your best bait first, one per cast. No bait, no cast: the worm bucket by my stall fills up by itself, a worm every 10 minutes.</p>
   </div>
 </div>
 
@@ -545,7 +545,7 @@
 
 <div id="settings" class="sheet" hidden>
   <div class="card">
-    <h2>Settings</h2>
+    <div class="shophead"><h2>Settings</h2><button class="xbtn" data-close aria-label="Close"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2b2140" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
     <p class="note"><b id="setVersion"></b></p>
     <p class="label">Sound</p>
     <div class="vol"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V5l10-2v13"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/></svg><label for="volMusic">Music</label><input id="volMusic" type="range" min="0" max="100" step="5" value="60"></div>

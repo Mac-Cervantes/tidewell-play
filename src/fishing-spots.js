@@ -2,14 +2,23 @@
 // - The river down the left edge of the land and the lake in the left half of lot 2 (mockup "Lake B2"):
 //   pure math for the ground (carve, isWet, onBank), the fresh water sheet, which place a cast lands in.
 // - The bait rule (mockups "Bait A" + "Bait C"): no bare hook; Fishel's free pack once a day and a worm
-//   bucket by the dock that refills by itself, even while you're away.
+//   bucket by Fishel's stall that refills by itself, even while you're away.
 // main.js only calls the small hooks exported here; look for "FISHING" there.
 import { BAIT_HELP } from './data.js';
 
 let A = null, THREE = null;
 
 // ---------- the river and the lake (math only: also used by the ground before init) ----------
-export const RIVER = { x: -13.9, amp: 0.3, half: 0.8, bank: 0.8, depth: 0.8, zEnd: 35.5 };   // runs from the woods behind the lots down to the sea
+export const RIVER = { x: -14.7, amp: 0.3, half: 1.6, bank: 0.8, depth: 0.8, zEnd: 35.5 };   // runs from the woods behind the lots down to the sea
+// the far bank's edge moved this much left of where it was in v0.1.57 (things on the far side move with it)
+export const innerBank = (z) => riverX(z) + RIVER.half + RIVER.bank;   // the home side's dry edge
+// the camera leans left as you near the river, by as much as the river grew, so its far bank stays in view
+export const camLean = (x, z) => z > -3.5 && x < -8 ? -Math.min(1, (-8 - x) / 3) * Math.max(0, -farShift() + 0.6) : 0;
+export const farShift = () => (RIVER.x - RIVER.half - RIVER.bank) - (-15.5);
+// rocks in the river (Mac, v0.1.61): hot spots where the rarer river fish bite more often (FISH rows with `rocks`)
+export const RIVER_ROCKS = [{ z: -1.4, s: 1 }, { z: 3.4, s: -1 }, { z: 8.6, s: 1 }, { z: 13.8, s: -1 }, { z: 19.5, s: 1 }, { z: 25.5, s: -1 }, { z: 31, s: 1 }]
+  .map(r => ({ ...r, x: RIVER.x + Math.sin(r.z * 0.5) * RIVER.amp + r.s * RIVER.half * 0.5 }));
+export const nearRocks = (x, z) => RIVER_ROCKS.some(r => Math.hypot(r.x - x, r.z - z) < 1.8);
 export const LAKE = { x: -8.2, z: 17.7, rx: 5.7, rz: 2.5, lot: 'back2' };                    // the left half of lot 2 (the thicket)
 const smooth = (a, b, t) => { t = Math.min(1, Math.max(0, (t - a) / (b - a))); return t * t * (3 - 2 * t); };
 export const riverX = (z) => RIVER.x + Math.sin(z * 0.5) * RIVER.amp;
@@ -53,7 +62,7 @@ export function freshTarget(px, pz) {
 }
 
 // ---------- the bait rule ----------
-const BUCKET = { x: 0.75, z: -3.05 };   // on the sand at the foot of the dock, left side (nothing stands in front of it)
+const BUCKET = { x: 6.15, z: -0.95 };   // beside Fishel's stall, right side (Mac, v0.1.61; it was at the foot of the dock)
 let bucket = null, bucketEl = null, giftEl = null;
 
 function bucketState() {
@@ -72,22 +81,16 @@ export function takeBucket() {
   A.addItem('worm', n); A.audio.play('buy'); A.renderHotbar(); A.commit();
   A.toast(`+${n} worms from the bucket`);
 }
-export const giftReady = () => A.S.gift !== A.todayKey();
-// Fishel's free pack, once a day: handed over when you talk to him. Returns true if he gave one.
-export function claimGift() {
-  if (!giftReady()) return false;
-  A.S.gift = A.todayKey(); A.addItem('worm', BAIT_HELP.giftWorms); A.renderHotbar(); A.commit();
-  return true;
-}
+// Fishel's free daily pack is gone (Mac, v0.1.61): the bucket by his stall is where free worms come from
+export const giftReady = () => false;
+export const claimGift = () => false;
 // the pop-up button: Take at the bucket (called from pickUse)
 export function action() {
   const P = A.player.pos;
   if (bucket && Math.hypot(P.x - BUCKET.x, P.z - BUCKET.z) < 1.2 && bucketCount() > 0) return { kind: 'take', key: 'bucket', go: takeBucket };
   return null;
 }
-export const noBaitWhy = () => giftReady()
-  ? 'No bait! Fishel has a free pack for you today.'
-  : bucketCount() > 0 ? 'No bait! Take worms from the bucket by the dock.' : 'No bait! The worm bucket fills up again soon. Fishel sells more.';
+export const noBaitWhy = () => bucketCount() > 0 ? 'No bait! Take worms from the bucket by Fishel\u2019s stall.' : 'No bait! The worm bucket by Fishel fills up again soon, or buy some from him.';
 
 function buildBucket() {
   const g = new THREE.Group(), mat = (c, r = 0.8) => new THREE.MeshStandardMaterial({ color: c, roughness: r, flatShading: true });
@@ -122,7 +125,16 @@ export function init(api) {
   bucket = buildBucket();
   // a few trees and bushes on the far bank by your home land, so it reads as a river and not the edge of the world
   for (const [n, x, z, sc] of [['tree_oak', -17.3, -1.2, 1.25], ['plant_bushLarge', -16.3, 0.9, 1.2], ['tree_default', -18.1, 2.4, 1.3], ['plant_bush', -16.4, 4.1, 1.2], ['tree_oak', -17.2, 5.6, 1.2]])
-    A.place('nature', n, x, z, { s: sc, r: x * 7 + z });
+    A.place('nature', n, x + farShift(), z, { s: sc, r: x * 7 + z });
+  // river rocks: one big rock and two small ones at each hot spot, poking out of the water
+  const rockGeo = new THREE.DodecahedronGeometry(1, 0), rockMat = new THREE.MeshStandardMaterial({ color: '#8e9098', roughness: 0.9, flatShading: true });
+  for (const r of RIVER_ROCKS) {
+    for (const [dx, dz, sz] of [[0, 0, 0.42], [0.6 * r.s, 0.5, 0.26], [-0.3 * r.s, -0.62, 0.2]]) {
+      const m = new THREE.Mesh(rockGeo, rockMat);
+      m.scale.set(sz * (1 + 0.2 * Math.sin(r.z + dx)), sz * 0.75, sz); m.rotation.set(0.3 * Math.sin(r.z * 3 + dz), r.z * 2 + dx, 0.2 * Math.cos(r.z + dx));
+      m.position.set(r.x + dx, A.WATER_Y + sz * 0.18, r.z + dz); m.castShadow = true; m.receiveShadow = true; A.scene.add(m);
+    }
+  }
   // the fence doesn't cross the river
   for (const f of A.townFence) if (onBank(f.position.x, 3)) f.visible = false;
   const st = document.createElement('style');

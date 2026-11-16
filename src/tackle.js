@@ -1,13 +1,13 @@
 // Rods and the tackle models (try/fishing, round 3 mockups: "Rods A", "Cast feel", the extras).
 // - Five rod models: the stick rod works everywhere; two upgrades for the river and lake, two for the sea.
-//   An upgrade unlocks through the fish book (catches or pages in that water) and is then bought from Fishel.
+//   An upgrade opens at a town level (v0.1.61; it was fish-book progress) and is then bought from Fishel.
 //   The right rod comes out by itself for the water you're fishing.
 // - Two cast feels: Plop (river and lake: slow, high, close) and Zip (sea: fast, flat, far), with their own sounds.
 // - The other models Mac attached: the lake jetty, the steps onto the dock, the worm (bucket and shop picture)
 //   and a lure as the Glow Lure's picture.
 // Models: Quaternius (CC0), assets/models/tackle → assets/pack-tackle.js, loaded in the background (decision 57).
 // main.js only calls the small hooks exported here; look for "TACKLE" there.
-import { RODS, ROD_ORDER, CAST, FISH } from './data.js';
+import { RODS, ROD_ORDER, CAST } from './data.js';
 import { bucketGroup } from './fishing-spots.js';
 
 let A = null, THREE = null;
@@ -25,18 +25,8 @@ export function rodFor(place) {
   return ROD_ORDER.filter(id => RODS[id].water === w && owned(id)).pop() || 'stick';
 }
 export function perks(place) { const r = RODS[rodFor(place)]; return { reel: r.reel || 0, bite: r.bite || 1 }; }
-// book progress in one kind of water: total catches and different fish found
-function progress(water) {
-  let catches = 0, pages = 0;
-  for (const f of FISH) if (waterOf(f.place) === water) { const n = (A.S.caught && A.S.caught[f.id]) || 0; catches += n; if (n) pages++; }
-  return { catches, pages };
-}
-function unlock(id) {
-  const r = RODS[id], p = progress(r.water), i = ROD_ORDER.indexOf(id);
-  const prev = ROD_ORDER.slice(0, i).filter(q => RODS[q].water === r.water).pop();
-  const kind = r.need.catches ? 'catches' : 'pages';
-  return { kind, have: Math.min(p[kind], r.need[kind]), need: r.need[kind], open: p[kind] >= r.need[kind] && (!prev || owned(prev)), prevMissing: !!prev && !owned(prev) };
-}
+// a rod opens at a town level (Mac, v0.1.61)
+function unlock(id) { const r = RODS[id]; return { level: r.level || 1, open: (A.S.level || 1) >= (r.level || 1) }; }
 
 // ---------- how a cast flies ----------
 export const castKind = (place) => (waterOf(place) === 'fresh' ? 'plop' : 'zip');
@@ -130,14 +120,14 @@ function dressBucket() {
 
 // ---------- Fishel's shop: a Rods tab ----------
 let shopEl = null, tab = 'bait';
-const lockPill = (u, water) => `<span class="tkp lock">${A.svg(u.kind === 'catches' ? 'fish' : 'book', '#2b2140', 16)}<b>${u.have}/${u.need}</b>${A.svg(water === 'fresh' ? 'pond' : 'wave', '#2b2140', 16)}</span>`;
+const lockPill = (u) => `<span class="tkp lock">${A.svg('lock', '#2b2140', 15)}Town level <b>${u.level}</b></span>`;
 function row(id) {
   const r = RODS[id], has = owned(id), u = id === 'stick' ? null : unlock(id);
   const perk = (icon, t) => `<span class="tkp perk">${A.svg(icon, '#2b2140', 15)}${t}</span>`;
   const right = has ? `<span class="tkp yours">${A.svg('check', '#2b2140', 15)}Yours</span>`
     : u.open ? `<button class="tkbuy" data-rod="${id}" ${A.S.coins < r.buy ? 'disabled' : ''}>${A.svg('coin', '#2b2140', 16)}<b>${r.buy.toLocaleString()}</b></button>`
-      : u.prevMissing && u.have >= u.need ? `<span class="tkp lock">${A.svg('lock', '#2b2140', 15)}after the one above</span>` : lockPill(u, r.water);
-  return `<div class="tkrow${has ? ' has' : ''}">${pics[id] ? `<img src="${pics[id]}" alt="" draggable="false">` : '<div class="tkph"></div>'}
+      : lockPill(u);
+  return `<div class="tkrow${has ? ' has' : ''}${u && !u.open && !has ? ' locked' : ''}" data-row="${id}">${pics[id] ? `<img src="${pics[id]}" alt="" draggable="false">` : '<div class="tkph"></div>'}
     <div class="tkl"><span class="tkn">${r.name}</span>${r.reel ? perk('clock', '+' + r.reel + ' s') : ''}${r.bite ? perk('bolt', 'Fast') : ''}${right}</div></div>`;
 }
 const head = (icon, title, castIcon, cast) => `<div class="tkh">${A.svg(icon, '#2b2140', 24)}<span>${title}</span><span class="tkp cast">${A.svg(castIcon, '#2b2140', 17)}${cast}</span></div>`;
@@ -150,7 +140,7 @@ function renderShop() {
   if (bait) return;
   const ids = (w) => ROD_ORDER.filter(id => RODS[id].water === w).map(row).join('');
   list.innerHTML = row('stick') + head('pond', 'River and lake', 'arc', 'Plop') + ids('fresh') + head('wave', 'Sea', 'zip', 'Zip') + ids('sea')
-    + '<p class="tknote">Catch fish and fill your fish book to unlock a rod. The right rod comes out by itself where you fish.</p>';
+    + '<p class="tknote">A rod opens at a town level, then it\u2019s yours to buy. The right rod comes out by itself where you fish.</p>';
 }
 function buy(id) {
   const r = RODS[id];
@@ -187,6 +177,7 @@ export function init(api) {
 #rodList { display: flex; flex-direction: column; gap: 7px; max-height: 58vh; overflow-y: auto; -webkit-overflow-scrolling: touch; touch-action: pan-y; }
 #rodList .tkrow { background: #fff; border: 2px solid #2b2140; border-radius: 14px; padding: 5px 9px 7px; }
 #rodList .tkrow.has { background: #f6f1e4; }
+#rodList .tkrow.locked { background: #ece7dc; } #rodList .tkrow.locked img { filter: brightness(0); opacity: 0.35; } #rodList .tkrow.locked .tkn { color: #8a8098; }
 #rodList .tkrow img, #rodList .tkph { display: block; width: 100%; aspect-ratio: 450 / 76; pointer-events: none; }
 #rodList .tkl { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
 #rodList .tkn { font-size: 16px; font-weight: 700; flex: 1; white-space: nowrap; }
@@ -204,5 +195,9 @@ export function init(api) {
   const list = document.createElement('div'); list.id = 'rodList'; list.hidden = true;
   const cards = shopEl.querySelector('#baitCards'); cards.parentNode.insertBefore(tabs, cards); cards.parentNode.insertBefore(list, cards);
   tabs.addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) { tab = b.dataset.tk; renderShop(); } });
-  list.addEventListener('click', (e) => { const b = e.target.closest('[data-rod]'); if (b && !b.disabled) buy(b.dataset.rod); });
+  list.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-rod]'); if (b) { if (b.disabled) A.toast(`You need ${RODS[b.dataset.rod].buy.toLocaleString()} coins for the ${RODS[b.dataset.rod].name}.`); else buy(b.dataset.rod); return; }
+    const row = e.target.closest('[data-row]'); if (!row) return; const id = row.dataset.row;   // a tap anywhere on a rod says what it needs (Mac: tapping did nothing)
+    if (id === 'stick' || owned(id)) A.toast(`${RODS[id].name}: yours.`); else if (!unlock(id).open) A.toast(`The ${RODS[id].name} opens at town level ${unlock(id).level}.`); else A.toast(`Tap the price to buy the ${RODS[id].name}.`);
+  });
 }

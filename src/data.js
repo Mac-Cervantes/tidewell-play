@@ -1,7 +1,7 @@
 // Tidewell game data. Everything tunable lives here as plain tables so it can be
 // exported to JSON for the Unity version later (see tools/export-data.mjs).
 
-export const VERSION = '0.1.60';
+export const VERSION = '0.1.61';
 export const VERSION_LABEL = 'BETA v' + VERSION;
 
 // Rarity tiers (decision 36). `weight` is the base chance per bite with worms.
@@ -16,7 +16,7 @@ export const RARITY = {
 // Bait (Fishel's shop). Better bait shifts the odds toward rarer fish (replaces cast power).
 // `mult` multiplies each rarity's weight; `bite` is the wait range in seconds before a bite.
 // The rod uses your best bait first. FISHING (try/fishing): the bare hook is gone, no bait means no cast;
-// Fishel's free daily pack and the worm bucket by the dock (BAIT_HELP) make sure nobody gets stuck.
+// the worm bucket by Fishel's stall (BAIT_HELP) make sure nobody gets stuck.
 export const BAIT = {
   worm:   { name: 'Worms',     mult: { common: 1, uncommon: 1, rare: 1, super: 1, legendary: 1 },           bite: [2, 4.5] },
   shrimp: { name: 'Shrimp',    mult: { common: 0.7, uncommon: 1.2, rare: 2.2, super: 1.8, legendary: 1.6 }, bite: [1.2, 3] },
@@ -24,7 +24,7 @@ export const BAIT = {
 };
 export const BAIT_ORDER = ['lure', 'shrimp', 'worm'];   // best first
 export const RARITY_ORDER = ['common', 'uncommon', 'rare', 'super', 'legendary'];
-export const BAIT_HELP = { giftWorms: 5, bucketMax: 5, bucketMinutes: 10 };   // Fishel's daily pack; the bucket grows 1 worm per bucketMinutes
+export const BAIT_HELP = { giftWorms: 5, bucketMax: 5, bucketMinutes: 10 };   // the bucket by Fishel grows 1 worm per bucketMinutes (giftWorms: his old daily pack, gone since v0.1.61)
 
 // Places to fish (try/fishing). `tab` groups them in the fish book.
 export const PLACES = {
@@ -53,9 +53,9 @@ export const FISH = [
   { id: 'mackerel',  name: 'Blue Mackerel',  rarity: 'common',    price: 11,  model: 'Fish1',     tint: '#5d8fd6', len: 0.4,  place: 'dock',  times: [] },
   { id: 'angel',     name: 'Royal Angelfish', rarity: 'rare',     price: 60,  model: 'Fish2',     tint: '#8e6ad8', len: 0.36, place: 'dock',  times: ['morning', 'day'], season: { Spring: 2, Summer: 2 } },
   { id: 'dace',      name: 'River Dace',     rarity: 'common',    price: 9,   model: 'Fish1',     tint: '#b7a66a', len: 0.22, place: 'river', times: [] },
-  { id: 'trout',     name: 'Speckled Trout', rarity: 'uncommon',  price: 24,  model: 'Fish1',     tint: '#d98f8f', len: 0.48, place: 'river', times: [], rain: 1.5 },
-  { id: 'salmon',    name: 'Fall Salmon',    rarity: 'rare',      price: 70,  model: 'Fish1',     tint: '#d9483b', len: 0.8,  place: 'river', times: [], only: 'Fall' },
-  { id: 'darter',    name: 'Golden Darter',  rarity: 'super',     price: 280, model: 'Fish3',     tint: '#f4c542', len: 0.2,  place: 'river', times: ['morning', 'day'] },
+  { id: 'trout',     name: 'Speckled Trout', rarity: 'uncommon',  price: 24,  model: 'Fish1',     tint: '#d98f8f', len: 0.48, place: 'river', times: [], rain: 1.5, rocks: 3 },
+  { id: 'salmon',    name: 'Fall Salmon',    rarity: 'rare',      price: 70,  model: 'Fish1',     tint: '#d9483b', len: 0.8,  place: 'river', times: [], only: 'Fall', rocks: 3 },
+  { id: 'darter',    name: 'Golden Darter',  rarity: 'super',     price: 280, model: 'Fish3',     tint: '#f4c542', len: 0.2,  place: 'river', times: ['morning', 'day'], rocks: 3 },
   { id: 'bluegill',  name: 'Bluegill',       rarity: 'common',    price: 10,  model: 'Fish2',     tint: '#5fb7a8', len: 0.25, place: 'lake',  times: [] },
   { id: 'guppy',     name: 'Pond Guppy',     rarity: 'common',    price: 8,   model: 'Fish3',     tint: '#7cc957', len: 0.12, place: 'lake',  times: [] },
   { id: 'carp',      name: 'Mirror Carp',    rarity: 'uncommon',  price: 26,  model: 'Fish2',     tint: '#b98a4e', len: 0.7,  place: 'lake',  times: [], rain: 1.5 },
@@ -64,15 +64,15 @@ export const FISH = [
   { id: 'whiskers',  name: 'Old Whiskers',   rarity: 'legendary', price: 850, model: 'Fish1',     tint: '#5b5470', len: 1.6,  place: 'lake',  times: ['night'], rain: 1.5 },
 ];
 // Rods (try/fishing round 3, mockup "Rods A"; models: Quaternius, CC0). The stick rod works everywhere; each water
-// has two upgrades. `need` is the fish-book progress in that water that unlocks it (total catches, or different
-// fish found); then Fishel sells it for `buy` coins, the lower one first. `reel` adds seconds to the Reel! window,
+// has two upgrades. Each opens at a town `level` (Mac, v0.1.61; it was fish-book progress before), then Fishel
+// sells it for `buy` coins. `reel` adds seconds to the Reel! window,
 // `bite` multiplies the wait for a bite. The rod for the water you're fishing comes out by itself.
 export const RODS = {
   stick:  { name: 'Stick rod',  model: 'FishingRod_Lvl1', water: 'any' },
-  reed:   { name: 'Reed rod',   model: 'FishingRod_Lvl2', water: 'fresh', reel: 1, need: { catches: 8 }, buy: 300 },
-  golden: { name: 'Golden rod', model: 'FishingRod_Lvl4', water: 'fresh', reel: 1, bite: 0.75, need: { pages: 6 }, buy: 1200 },
-  harbor: { name: 'Harbor rod', model: 'FishingRod_Lvl3', water: 'sea',   reel: 1, need: { catches: 8 }, buy: 400 },
-  storm:  { name: 'Storm rod',  model: 'FishingRod_Lvl5', water: 'sea',   reel: 1, bite: 0.75, need: { pages: 7 }, buy: 1500 },
+  reed:   { name: 'Reed rod',   model: 'FishingRod_Lvl2', water: 'fresh', reel: 1, level: 4, buy: 300 },
+  golden: { name: 'Golden rod', model: 'FishingRod_Lvl4', water: 'fresh', reel: 1, bite: 0.75, level: 7, buy: 1200 },
+  harbor: { name: 'Harbor rod', model: 'FishingRod_Lvl3', water: 'sea',   reel: 1, level: 5, buy: 400 },
+  storm:  { name: 'Storm rod',  model: 'FishingRod_Lvl5', water: 'sea',   reel: 1, bite: 0.75, level: 9, buy: 1500 },
 };
 export const ROD_ORDER = ['stick', 'reed', 'golden', 'harbor', 'storm'];
 // How a cast flies (Mac: "the ocean cast zips fast and the freshwater just plops in an arc").
@@ -182,7 +182,7 @@ export const ORDER_FOLK = {
   pike:    { name: 'Old Pike', color: '#7a9a6a', asks: ['fish'] },
 };
 export const ORDERS = {
-  slots: 6,
+  slots: 6,                 // most orders on the board at once; it's one per townsperson now (Mac, v0.1.61), so the board fits without scrolling
   refillMinutes: 10,        // a new order is pinned this long after one is filled or tossed
   payMult: 1.6,             // coins = what Higgins would pay x this, rounded to 5
   wants: [                  // what can be asked for and how many; never super rare or legendary
@@ -204,8 +204,10 @@ export const ORDERS = {
 };
 // Make one order. `rand` returns 0..1 (seedable for tests).
 // `level` (town level) keeps crop asks to crops whose seeds are unlocked.
-export function makeOrder(rand, id, level = 99) {
-  const folk = Object.keys(ORDER_FOLK).filter(k => (ORDER_FOLK[k].opens || 1) <= level), who = folk[Math.floor(rand() * folk.length)], f = ORDER_FOLK[who];
+// `who` picks the townsperson (one order each, v0.1.61); left out, it's anyone who's open.
+export const orderFolk = (level) => Object.keys(ORDER_FOLK).filter(k => (ORDER_FOLK[k].opens || 1) <= level);
+export function makeOrder(rand, id, level = 99, who = null) {
+  const folk = orderFolk(level); if (!who || !folk.includes(who)) who = folk[Math.floor(rand() * folk.length)]; const f = ORDER_FOLK[who];
   const pool = ORDERS.wants.filter(w => f.asks.includes(ITEMS[w.item].kind === 'crop' ? 'crop' : 'fish')
     && (ITEMS[w.item].kind !== 'crop' || unlockLevel('seed_' + w.item) <= level));
   const lines = f.lines || (rand() < 0.25 ? 2 : 1), items = [];
@@ -215,7 +217,7 @@ export function makeOrder(rand, id, level = 99) {
   }
   const value = items.reduce((t, [it, n]) => t + ITEMS[it].price * n, 0);
   const coins = Math.max(10, Math.round(value * ORDERS.payMult / 5) * 5);
-  const ex = ORDERS.extras.filter(e => !e.minValue || value >= e.minValue), tw = ex.reduce((t, e) => t + e.w, 0);
+  const ex = ORDERS.extras.filter(e => (!e.minValue || value >= e.minValue) && (e.kind !== 'item' || unlockLevel(e.item) <= level)), tw = ex.reduce((t, e) => t + e.w, 0);
   let x = rand() * tw, extra = ex[0];
   for (const e of ex) { x -= e.w; if (x <= 0) { extra = e; break; } }
   return { id, who, items, coins, extra: extra.kind === 'heart' ? { kind: 'heart' } : { kind: 'item', item: extra.item, n: extra.n } };
@@ -265,11 +267,12 @@ export const LEVELS = {
   1:  [{ item: 'seed_turnip' }, { item: 'seed_lettuce' }, { item: 'seed_carrot' }, { item: 'worm' }],
   2:  [{ item: 'seed_beet' }, { item: 'seed_wheat' }, { place: "Rosa's Flowers opens" }, { tool: 'shovel' }],
   3:  [{ item: 'shrimp' }, { place: 'Your 1st extra lot', land: true }, { tool: 'saw' }, { tool: 'pick' }, { place: 'Nell\u2019s General Store opens', store: true }],
-  4:  [{ item: 'seed_tomato' }, { item: 'seed_rice' }, { place: 'The cargo ship', ship: true }],
-  5:  [{ item: 'seed_corn' }, { place: 'A 2nd lot', land: true }, { decor: 'fountain' }, { later: 'Crab trap' }],
+  4:  [{ item: 'seed_tomato' }, { item: 'seed_rice' }, { place: 'The cargo ship', ship: true }, { rod: 'reed' }],
+  5:  [{ item: 'seed_corn' }, { place: 'A 2nd lot', land: true }, { decor: 'fountain' }, { rod: 'harbor' }, { later: 'Crab trap' }],
   6:  [{ item: 'lure' }],
+  7:  [{ rod: 'golden' }],
   8:  [{ item: 'seed_watermelon' }, { place: 'A 3rd lot', land: true }],
-  9:  [{ later: 'Second crab trap' }],
+  9:  [{ rod: 'storm' }, { later: 'Second crab trap' }],
   10: [{ item: 'seed_pumpkin' }],
   12: [{ place: 'A 4th lot', land: true }, { later: 'Fruit trees' }],
 };
@@ -294,7 +297,7 @@ export function fishWeights(bait, tod, ctx = {}) {
   const pool = fishPool(tod, ctx).filter(f => m[f.rarity] > 0);
   // a rarity's weight is shared by the species of that rarity that can bite right now
   return pool.map(f => [f, RARITY[f.rarity].weight * m[f.rarity] / pool.filter(g => g.rarity === f.rarity).length
-    * ((f.season && f.season[season]) || 1) * (ctx.rain && f.rain ? f.rain : 1)]);
+    * ((f.season && f.season[season]) || 1) * (ctx.rain && f.rain ? f.rain : 1) * (ctx.rocks && f.rocks ? f.rocks : 1)]);   // by the river rocks (v0.1.61)
 }
 export function rollFish(bait, tod, rand = Math.random, ctx = {}) {
   const w = fishWeights(bait, tod, ctx);
