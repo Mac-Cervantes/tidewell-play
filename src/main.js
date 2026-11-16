@@ -3427,6 +3427,9 @@ function resize() {
   camera.fov = w / h < 0.75 ? 44 : 36; camera.updateProjectionMatrix();
 }
 window.addEventListener('resize', resize);
+// home-screen app: iPhone can report the wrong height at launch, so size again once things settle
+if (window.visualViewport) visualViewport.addEventListener('resize', resize);
+addEventListener('pageshow', resize); addEventListener('orientationchange', () => setTimeout(resize, 300)); setTimeout(resize, 500); setTimeout(resize, 1500);
 
 // ---------- loop ----------
 const clock = new THREE.Clock();

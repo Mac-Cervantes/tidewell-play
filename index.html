@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Tidewell">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="theme-color" content="#2fa4d8">
 <title>Tidewell</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -150,7 +150,7 @@
   #loading .bar span { display: block; height: 100%; width: 0; background: #ff7a59; transition: width 0.2s; }
   #loading p { margin: 0; font-weight: 600; }
   #loading .ver { font-size: 12px; opacity: 0.6; }
-  .sheet .card { max-height: 82vh; overflow-y: auto; }
+  .sheet .card { max-height: min(82vh, 100%); overflow-y: auto; }
   .sheet .grid button { font-family: inherit; color: #2b2140; cursor: pointer; }
   .sheet .grid button[data-soon] { opacity: 0.55; }
   .sheet .sub { font-size: 15px; font-weight: 600; color: #6a5f7c; margin-left: 6px; }
@@ -199,7 +199,7 @@
   .bcard .own { font-size: 11px; font-weight: 700; color: #2b2140; }
   .bcard button { width: 100%; border: 2px solid #2b2140; border-radius: 10px; background: #ffe08a; min-height: 44px; font-family: inherit; font-weight: 700; font-size: 13px; color: #2b2140; cursor: pointer; }
   .bcard button:disabled { background: #eee6d6; color: #8a7fa0; border-color: #b9aec8; cursor: default; }
-  .ocard { max-height: calc(100vh - 220px); display: flex; flex-direction: column; }
+  .ocard { max-height: min(calc(100vh - 220px), 100%); display: flex; flex-direction: column; }
   .otabs { display: flex; gap: 6px; margin: 2px 0 8px; }
   .otabs button { flex: 1; min-height: 40px; border-radius: 10px; font-family: inherit; font-weight: 700; font-size: 14px; color: #2b2140; border: 2px solid #2b2140; background: #ffe08a; }
   .otabs button:disabled { border: 2px dashed #b9aec8; background: transparent; color: #8a7fa0; font-weight: 600; }
