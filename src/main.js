@@ -275,7 +275,7 @@ function buildWater() {
            for (int i = 0; i < 8; i++) {
              vec3 R = uRings[i]; if (R.z < 0.0) continue;
              // an oval starting right at the hull, stretched along the ship, wobbly and broken up (Mac: "don't have them perfect")
-             vec2 v = (p - R.xy) * vec2(1.0, 0.42); float ang = atan(v.y, v.x);
+             vec2 v = (p - R.xy) * vec2(0.42, 1.0); float ang = atan(v.y, v.x);
              float wob = 0.16 * sin(ang * 3.0 + t * 0.6) + 0.09 * sin(ang * 7.0 - t * 1.1) + 0.05 * sin(ang * 13.0 + t * 0.4);
              float d = length(v) - R.z + wob;
              if (d < 0.0 || d > 1.7) continue;
@@ -331,12 +331,20 @@ let merchant = null;
 function furlSails(ship, k) {
   ship.traverse(o => {
     if (!/^sail/.test(o.name)) return;
-    if (!o.userData.furl) { const bb = new THREE.Box3().setFromObject(o); o.updateWorldMatrix(true, false); const top = o.worldToLocal(new THREE.Vector3(0, bb.max.y, 0)).y; o.userData.furl = { y: o.position.y, top, sy: o.scale.y }; }
+    if (!o.userData.furl) { o.updateWorldMatrix(true, true); const bb = new THREE.Box3().setFromObject(o);   // parents first: the ship was just moved and scaled (v0.1.60 fix: the back sail floated above the mast)
+      const c = bb.getCenter(new THREE.Vector3()); const top = o.worldToLocal(new THREE.Vector3(c.x, bb.max.y, c.z)).y; o.userData.furl = { y: o.position.y, top, sy: o.scale.y }; }
     const f = o.userData.furl, s = 1 - 0.86 * k;
     o.scale.y = f.sy * s; o.position.y = f.y + f.top * f.sy * (1 - s);
   });
 }
-const SHIP_AT = { x: 5.7, z: -11.2 }, SHIP_OUT = { x: 12, z: -34 };
+// the cargo ship ties up across the end of the dock, bow to the right (Mac, v0.1.60, mockup A); it sails in from the left and out to the right
+const SHIP_AT = { x: 2.4, z: -13.2 }, SHIP_IN = { x: -34, z: -13.2 }, SHIP_OUT = { x: 36, z: -13.2 }, SHIP_ROT = Math.PI / 2;
+// the ship's hull at the dock, for casts (you cast off the sides of the dock, not into the ship)
+function shipBlocks(px, pz, x, z) {   // does a cast from (px, pz) to (x, z) land on or fly over the ship?
+  if (!merchant || !merchant.visible || shipAnim || z > -11.0) return false;
+  if (z > -15.6 && Math.abs(x - SHIP_AT.x) < 4.4) return true;
+  const t = (SHIP_AT.z - pz) / (z - pz); return t > 0 && t < 1 && Math.abs(px + (x - px) * t - SHIP_AT.x) < 4.4;
+}
 const DOCK = { x: 2.4, half: 0.97, zNear: -3.2, zFar: -11.1 };
 function onDock(x, z) { return Math.abs(x - DOCK.x) < DOCK.half && z <= DOCK.zNear && z >= DOCK.zFar; }
 // the fence between your land and the wilds; it moves back each time you buy a lot (decision 69, layout D)
@@ -421,7 +429,7 @@ function buildWorld() {
     const b = place('pirate', n, x, z, { r }); b.position.y = groundY(x, z) + 0.02; b.rotation.x = -0.05;
   }
   // the merchant ship, tied up along the dock (cargo boat, decision 51)
-  merchant = place('pirate', 'ship-medium', SHIP_AT.x, SHIP_AT.z, { y: WATER_Y - 0.25, r: 0, s: 0.85 });
+  merchant = place('pirate', 'ship-medium', SHIP_AT.x, SHIP_AT.z, { y: WATER_Y - 0.25, r: SHIP_ROT, s: 0.85 });
   bobbers.push({ o: merchant, base: WATER_Y - 0.22, ride: true, sp: 0.7, ph: 0.6, rock: 0.015 });
   // ripple rings: dock posts, the ship's hull, the rocks (x, z, radius)
   // ripples around the ship while it's tied up
@@ -1101,10 +1109,12 @@ function castTarget() {
   const p = player.pos.clone().addScaledVector(f, CAST_DIST + tackle.seaReach());   // TACKLE: the sea cast zips further out
   p.z = Math.min(p.z, -5.4);
   if (Math.abs(p.x - DOCK.x) < DOCK.half + 0.7 && p.z > DOCK.zFar - 1) p.x = DOCK.x + Math.sign(p.x - DOCK.x || 1) * (DOCK.half + 1.0);
+  if (shipBlocks(player.pos.x, player.pos.z, p.x, p.z)) { p.x = DOCK.x + Math.sign(f.x || 1) * (DOCK.half + 2.6); p.z = Math.min(-5.4, Math.max(player.pos.z - 1.2, -10.6)); }   // the ship's at the end of the dock: cast off the side
   return p;
 }
 function beginCast(target) {
   if (!bestBait()) { toast(spots.noBaitWhy()); return; }   // FISHING: no bait, no cast
+  if (shipBlocks(player.pos.x, player.pos.z, target.x, target.z)) { toast('The ship is in the way. Cast off the side of the dock.'); return; }
   fishing.place = spots.placeAt(target.x, target.z, player.pos.x, player.pos.z, onDock(player.pos.x, player.pos.z));   // FISHING
   ensureFish();
   fishing.land.copy(target); fishing.land.y = WATER_Y + 0.03;
@@ -2827,7 +2837,7 @@ function tickCargo(dt) {
   // the trip: once it's time, the ship sails back in and the pay waits in a chest on the dock
   if (shipAway() && Date.now() >= S.cargo.back && !shipAnim) {
     S.cargo.back = 0; commit();
-    merchant.visible = true; audio.shipBell(); shipAnim = { t: 0, dur: 7, from: SHIP_OUT, to: SHIP_AT, done: () => { refreshCargo(); toast('The cargo ship is back! Your pay is on the dock.'); } };
+    merchant.visible = true; audio.shipBell(); shipAnim = { t: 0, dur: 7, from: SHIP_IN, to: SHIP_AT, done: () => { refreshCargo(); toast('The cargo ship is back! Your pay is on the dock.'); } };
   }
   waterUniforms.uRing.value = merchant && merchant.visible && !shipAnim ? 1 : 0;   // rings only around the ship at rest
   if (shipAnim) {
@@ -3731,7 +3741,7 @@ function frame() {
   let skip = false; try { skip = sessionStorage.getItem('tidewell.skipMenu') === '1'; sessionStorage.removeItem('tidewell.skipMenu'); } catch (e) {}
   if (skip) startGame(); else showMainMenu();
   window.__ready = true;
-  window.__tidewell = { player, get S() { return S; }, fishing, settings, decor, cropIcon, farm, get body() { return body; }, fishIcon, spots, dex, tackle, farmToolMesh, plots, lotView, get clr() { return clr; }, inRock, get dig() { return digModels; }, setLook: (l) => { for (const b of Object.values(bodies)) setLook(b, l); }, joy };   // used by tools/ (screenshots, tests)
+  window.__tidewell = { get merchant() { return merchant; }, THREE, player, get S() { return S; }, fishing, settings, decor, cropIcon, farm, get body() { return body; }, fishIcon, spots, dex, tackle, farmToolMesh, plots, lotView, get clr() { return clr; }, inRock, get dig() { return digModels; }, setLook: (l) => { for (const b of Object.values(bodies)) setLook(b, l); }, joy };   // used by tools/ (screenshots, tests)
   clock.getDelta();
   requestAnimationFrame(frame);
   // Everything else loads quietly in the background, one pack at a time so the game stays smooth:
