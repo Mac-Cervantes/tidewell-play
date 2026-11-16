@@ -877,7 +877,7 @@ function setBody(k) {
 }
 // ANIM: the look Mac picked (Nov 14: B's walk and idle + the Universal Animation Library long jog;
 // Nov 15: relaxed upright standing posture, arms in, fists); 'now' brings back v0.1.51
-const ANIM_LOOK = 'r';
+const ANIM_LOOK = 'rf';   // Nov 16: + finish the last step, stand up in stages (A), runner arms, real fists
 // move every player body at ground speed v (m/s); the legs keep pace with the ground
 function locomote(v, dt) { for (const b of Object.values(bodies)) anim.locomote(b, v, dt); }
 // play a one-shot on the upper body while the legs keep walking

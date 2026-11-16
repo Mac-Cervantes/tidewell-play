@@ -30,6 +30,16 @@ export const GAITS = {
   z: { name: 'Relaxed + UAL sway', base: 'w', ualIdle: 0.6, posture: { knee: 0.06, arm: 0.2, armFwd: 0.12, elbow: 0.25, hands: 0.5 } },
   // Mac's pick (Nov 15): Relaxed, arms closer to the body, feet straight ahead, hands stay fists "for now"
   r: { name: 'Relaxed (picked)', base: 'w', posture: { knee: 0.06, arm: 0.07, armFwd: 0.1, elbow: 0.25, hands: 0 } },
+  r0: { name: 'v0.1.63 stop (freezes mid-stride)', base: 'r', noSettle: true },   // for the stop mockup only
+  // standing-up mockups (Nov 16), seconds: legs/hips settle; arms drop (after armDelay); the run's forward lean straightens (after leanDelay)
+  s1: { name: 'Stand up in stages', base: 'r', stand: { legs: 0.4, armDelay: 0.03, arms: 0.35, leanDelay: 0.15, lean: 0.55 } },
+  // runner's arms mockups (Nov 16), on top of s1 (Mac picked A: stand up in stages)
+  ra1: { name: 'Runner arms', base: 's1', armRun: { amp: 0.6, back: 0.3, elbow: 1.45, pump: 0.25, open: 0.45, out: 0.1 } },
+  // Mac's pick (Nov 16): Runner arms, elbows a touch further out (no clipping), a real fist
+  rf: { name: 'Runner arms + fist', base: 'ra1', armRun: { amp: 0.6, back: 0.3, elbow: 1.45, pump: 0.25, open: 0.45, out: 0.2 },
+    posture: { knee: 0.06, arm: 0.07, armFwd: 0.1, elbow: 0.25, hands: 0, fist: { fingers: 1.7, thumb: 1.3 } } },
+  ra2: { name: 'Sprinter arms', base: 's1', armRun: { amp: 0.85, back: 0.35, elbow: 1.4, pump: 0.35, open: 0.55, out: 0.08 } },
+  s2: { name: 'Stand up in stages, slower', base: 'r', stand: { legs: 0.6, armDelay: 0.05, arms: 0.5, leanDelay: 0.25, lean: 0.9 } },
   r2: { name: 'Relaxed, arms in more', base: 'w', posture: { knee: 0.06, arm: 0.02, armFwd: 0.08, elbow: 0.3, hands: 0.5 } },
   u: { name: 'UAL jog', ual: true, stride: 1, lean: 0, idle: 0 },
   v: { name: 'UAL long jog', ual: true, stride: 1.25, lean: 0, idle: 0 },
@@ -40,7 +50,7 @@ const UPPER = /^(Torso|Neck|Head|Shoulder|UpperArm|LowerArm|Fist|Thumb|Weapon|In
 const SPINE = /^(Abdomen|Torso|Neck|Head)$/;
 const PHASE0 = { Walk: 0, Run: -0.05 };         // left foot lands at the same phase in both clips
 // a look can start from another one and change a few knobs
-const look = (k) => { const g = GAITS[k]; return g.base ? { ...GAITS[g.base], ...g, base: undefined } : g; };
+const look = (k) => { const g = GAITS[k]; return g.base ? { ...look(g.base), ...g, base: undefined } : g; };
 const _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _v = new THREE.Vector3();
 
 // average of a quaternion track (good enough for small spreads)
@@ -291,13 +301,42 @@ export function locomote(b, v, dt) {
   unpose(b);
   G.t += dt;
   // the feet follow the real speed (no lag = no sliding); only the walk/run/idle mix is eased
-  G.speed += (v - G.speed) * Math.min(1, dt * 7);
+  // stopping eases out a little slower than starting, so the last step can finish
+  G.speed += (v - G.speed) * Math.min(1, dt * (v >= G.speed || g.noSettle ? 7 : G.settle != null && G.settle <= 0 ? 10 : 5));   // once the last step lands, settle quickly
   const s = G.speed;
   const moving = smooth(0.05, 0.6, s), run = smooth(2.5, 3.1, s);
   const w = G.w; w.Idle = 1 - moving; w.Walk = moving * (1 - run); w.Run = moving * run;
+  G.wu = w.Idle; G.runMix = run;
   // metres per cycle of what you see (measured on the dummy by calibrate)
   const stride = G.stride.Walk * (1 - run) + G.stride.Run * run;
-  G.phase = (G.phase + v * dt / stride) % 1;
+  if (v > 0.05 || !G.pass || g.noSettle) { G.phase = (G.phase + v * dt / stride) % 1; G.settle = null; }
+  else if (moving > 0.01) {
+    // just let go: finish the step to the next place the legs pass each other, then hold there while
+    // the idle fades in (instead of freezing mid-stride)
+    if (G.settle == null) {   // how far (in cycles) to the next stopping place
+      let best = 1; for (const p of G.pass[run > 0.5 ? 'Run' : 'Walk']) best = Math.min(best, ((p - G.phase) % 1 + 1) % 1);
+      G.settle = best;
+    }
+    const step = Math.min(G.settle, Math.max(s / stride, 1.2) * dt);   // at the speed it had, never a crawl
+    G.phase = (G.phase + step) % 1; G.settle -= step;
+  }
+  // Standing up in stages (look knob 'stand'): hold the stride while the last step finishes, then the legs
+  // and hips settle first, and the spine and arms follow later and slower, so it doesn't pop up all at once.
+  if (g.stand && G.pass) {
+    if (v > 0.05) { G.standT = null; G.hold = null; G.stopLean = 0; }
+    else {
+      if (G.hold == null) G.hold = { idle: w.Idle, run };   // the mix at the moment of letting go
+      if (G.settle != null && G.settle > 0) G.standT = null;
+      else if (G.standT == null) G.standT = 0; else G.standT += dt;
+      const S = g.stand, h = G.hold, t = G.standT ?? 0, up = G.standT == null ? 0 : 1;
+      const wl = h.idle + (1 - h.idle) * up * smooth(0, 1, t / S.legs);                 // feet plant, legs straighten
+      const wu = h.idle + (1 - h.idle) * up * smooth(0, 1, (t - S.armDelay) / S.arms);   // arms drop (they're heavy: early)
+      w.Idle = wl; w.Walk = (1 - wl) * (1 - h.run); w.Run = (1 - wl) * h.run; G.wu = wu; G.runMix = h.run;
+      // the body stays leaning forward from the run and straightens up last
+      // (it takes over from the run's own lean as that fades with the legs, so nothing jumps)
+      G.stopLean = (1 - h.idle) * (0.05 + 0.1 * h.run) * up * smooth(0, 1, t / S.legs) * (1 - smooth(0, 1, (t - S.leanDelay) / S.lean));
+    }
+  }
   for (const n of ['Walk', 'Run']) {
     const d = A[n].low.getClip().duration, t = ((G.phase + (G.phase0 ? G.phase0[n] : PHASE0[n])) % 1 + 1) % 1 * d;
     A[n].low.time = t; A[n].up.time = t;
@@ -310,7 +349,9 @@ export function locomote(b, v, dt) {
     // the talk loop moves the upper body only; its legs stand turned out, so the legs stay on the idle
     const wn = n === 'Idle' ? w.Idle * (1 - talk) : n === 'Talk' ? w.Idle * talk : w[n];
     A[n].low.setEffectiveWeight(n === 'Talk' ? 0 : n === 'Idle' ? w.Idle : wn);
-    A[n].up.setEffectiveWeight(wn * G.upW);
+    // the upper body has its own idle weight (G.wu), which lags behind the legs while standing up
+    const wu = G.wu, un = n === 'Idle' ? wu * (1 - talk) : n === 'Talk' ? wu * talk : (1 - wu) * (n === 'Run' ? G.runMix : 1 - G.runMix);
+    A[n].up.setEffectiveWeight(un * G.upW);
   }
   G.lean += (g.lean * run * moving + 0.03 * moving * (1 - run) - G.lean) * Math.min(1, dt * 5);
   b.cur = w.Run > w.Walk && w.Run > w.Idle ? 'Run' : w.Walk > w.Idle ? 'Walk' : 'Idle';
@@ -341,9 +382,19 @@ export function calibrate(b, sync, feet) {
     G.stride[n] = Math.max(0.2, sum);
     let best = 0; for (let i = 1; i < N; i++) if (pts[i][0][0] > pts[best][0][0]) best = i;   // left foot furthest forward
     (G.front = G.front || {})[n] = best / N;
+    // the best places to stop: both feet as low as they get (on the ground), and not far apart
+    const lo = Math.min(...pts.flat().map(q => q[1])), span = Math.max(1e-6, Math.max(...pts.flat().map(q => q[1])) - lo);
+    const zs = pts.flat().map(q => q[0]), zspan = Math.max(1e-6, Math.max(...zs) - Math.min(...zs));
+    const score = pts.map(q => (Math.max(q[0][1], q[1][1]) - lo) / span + 0.35 * Math.abs(q[0][0] - q[1][0]) / zspan);
+    const pass = [];
+    for (let i = 0; i < N; i++) { const pv = score[(i + N - 1) % N], nx = score[(i + 1) % N]; if (score[i] <= pv && score[i] <= nx) pass.push(i / N); }
+    pass.sort((x, y) => score[Math.round(x * N)] - score[Math.round(y * N)]);
+    (G.passRaw = G.passRaw || {})[n] = pass.slice(0, 2);
   }
   // line the clips up so the left foot lands at the same phase in walk and run (the walk is the reference)
   G.phase0 = { Walk: 0, Run: G.front.Run - G.front.Walk };
+  // the same stopping places on the shared phase (phase = clip fraction - phase0)
+  G.pass = {}; for (const n of ['Walk', 'Run']) G.pass[n] = (G.passRaw[n] || [0, 0.5]).map(f => ((f - G.phase0[n]) % 1 + 1) % 1);
   for (const k of ['Idle', 'Walk', 'Run', 'Talk']) if (A[k]) for (const a of [A[k].low, A[k].up]) a.setEffectiveWeight(k === 'Idle' ? 1 : 0);
   G.w.Idle = 1; G.w.Walk = 0; G.w.Run = 0;
   b.mixer.update(0); sync(b);
@@ -360,7 +411,7 @@ export function pose(b) {
   const G = b.gait, g = look(b.gaitKey); if (!G || g.legacy) return;
   const t = G.t, wb = G.w.Idle, wi = wb * (g.idle ?? 1);
   G.saved[0].copy(G.ab.quaternion); G.saved[1].copy(G.head.quaternion); G.posed = true;   // undone in locomote() before the next mixer.update
-  G.ab.quaternion.multiply(_q.setFromAxisAngle(_v.set(1, 0, 0), G.lean + wb * 0.03 * Math.sin(t * 2 * Math.PI / 3.4)));
+  G.ab.quaternion.multiply(_q.setFromAxisAngle(_v.set(1, 0, 0), G.lean + (G.stopLean || 0) + wb * 0.03 * Math.sin(t * 2 * Math.PI / 3.4)));
   if (wi > 0.01 && G.head && b.upBusy <= 0) {
     // a slow look left and right, and a small nod now and then
     const yaw = 0.16 * Math.sin(t * 0.55) * Math.sin(t * 0.21), nod = 0.04 * Math.sin(t * 0.9 + 1);
@@ -421,11 +472,24 @@ export function initPosture(b, dummy) {
   const fix = [], copied = new Set(P.pairs.map(q => q.t));
   for (const n of POSE_BONES) {
     const o = by(n), oi = ki.getObjectByName(n), t = k.getObjectByName(n); if (!o || !oi || !t) continue;
-    fix.push({ t, C: wq(oi).invert().multiply(wq(o)), base: copied.has(t) ? null : oi.quaternion.clone(), arm: /Shoulder|Arm|Hand/.test(n), W: new THREE.Quaternion(), N: new THREE.Quaternion() });
+    fix.push({ t, C: wq(oi).invert().multiply(wq(o)), base: copied.has(t) ? null : oi.quaternion.clone(), arm: /Shoulder|Arm|Hand/.test(n), spine: /Spine|Chest|Neck|Head/.test(n), W: new THREE.Quaternion(), N: new THREE.Quaternion() });
   }
   km.uncacheRoot(ki);
-  // fingers are never animated: uncurl them part way, for good
-  k.traverse(o => { if (/Hand(Thumb|Index|Middle|Ring|Pinky)/.test(o.name)) { const r = s.getObjectByName(o.name); if (r) o.quaternion.slerp(r.quaternion, pz.hands); } });
+  // fingers are never animated, so this is for good: a real fist (Mac: "fingers should curl inwards into a
+  // fist"), or else uncurl them part way. The finger block curls down into the palm (the bind pose is palm
+  // down), the thumb folds over it.
+  if (pz.fist) {
+    // tighter fist: keep curling each joint the way the Kenney idle already curls it (same axis), further
+    k.traverse(o => {
+      const m = /Hand(Thumb|Index)\d$/.exec(o.name); if (!m) return;
+      const r = s.getObjectByName(o.name); if (!r) return;
+      const d = r.quaternion.clone().invert().multiply(o.quaternion);   // bind -> Kenney idle, in the joint's frame
+      if (d.w < 0) { d.x *= -1; d.y *= -1; d.z *= -1; d.w *= -1; }
+      const ang = 2 * Math.acos(Math.min(1, d.w)), sn = Math.sqrt(Math.max(1e-9, 1 - d.w * d.w));
+      const f = m[1] === 'Thumb' ? pz.fist.thumb : pz.fist.fingers;
+      o.quaternion.copy(r.quaternion).multiply(_q.setFromAxisAngle(_v.set(d.x / sn, d.y / sn, d.z / sn), Math.min(ang * f, Math.PI * 0.6)));
+    });
+  } else k.traverse(o => { if (/Hand(Thumb|Index|Middle|Ring|Pinky)/.test(o.name)) { const r = s.getObjectByName(o.name); if (r) o.quaternion.slerp(r.quaternion, pz.hands); } });
   b.posture = { fix, lift, feet: pz.feet === false ? null : ['Left', 'Right'].map(sd => ({ foot: k.getObjectByName(sd + 'Foot'), toe: k.getObjectByName(sd + 'Toes_end') })).filter(f => f.foot && f.toe) };
 }
 // after syncPuppet: blend toward the upright stand by how much the body is standing still.
@@ -436,14 +500,17 @@ export function posture(b, busy = 0) {
   // the upright base is for standing and for the library clips (their motion is measured from an upright
   // walk, not from Kenney's crouch); the pack walk keeps its own base
   let w = G.w.Idle; for (const n of b.ualClips || []) w += G.w[n];
-  if (w < 0.002) return;
-  const wa = busy ? 0 : w * (G.upW ?? 1);   // arms also wait for one-shots (Pick up) to finish
+  // upper body: its own (slower, while standing up) idle weight, plus its share of the library clips
+  const wuI = G.wu ?? G.w.Idle, rm = G.runMix ?? 0, ual = b.ualClips || [];
+  const wU = wuI + (1 - wuI) * ((ual.includes('Run') ? rm : 0) + (ual.includes('Walk') ? 1 - rm : 0));
+  if (w < 0.002 && wU < 0.002) return;
+  const wa = busy ? 0 : wU * (G.upW ?? 1);   // arms also wait for one-shots (Pick up) to finish
   for (const f of p.fix) if (f.base) f.t.quaternion.copy(f.base);
   b.puppet.k.updateMatrixWorld(true);
   for (const f of p.fix) f.t.getWorldQuaternion(f.W);   // the pose as copied, before any change
   const done = new Map();
   for (const f of p.fix) {   // parents come first in POSE_BONES
-    const k = f.arm ? wa : w;
+    const k = f.arm ? wa : f.spine ? wU : w;
     f.N.copy(f.W); if (k > 0.002) f.N.slerp(_pq.copy(f.W).multiply(f.C), k);
     const par = done.get(f.t.parent) || f.t.parent.getWorldQuaternion(_q2);
     f.t.quaternion.copy(_q.copy(par).invert().multiply(f.N));
@@ -455,6 +522,37 @@ export function posture(b, busy = 0) {
   h.position.copy(h.parent.worldToLocal(P.k.localToWorld(at)));
   P.k.updateMatrixWorld(true);
   if (p.feet && G.w.Run > 0.01) straightFeet(b, G.w.Run);
+  // runner's arms: the upper body's share of the run, and only when nothing else poses the arms
+  const g = look(b.gaitKey), wArm = (1 - (G.wu ?? G.w.Idle)) * (G.runMix ?? 0) * (G.upW ?? 1);
+  if (g.armRun && !busy && wArm > 0.01) runArms(b, g.armRun, wArm);
+}
+// Runner's arms (Mac: "like a runner/sprinter, elbows close to the body, hands in a fist"): the upper arm
+// swings straight forward and back, opposite the leg on its side; the elbow stays bent near 90°, a bit more
+// in front; the arm stays close to the side and the hand never crosses the belly.
+// o: { amp: swing (radians), back: extra swing behind, elbow: bend (radians), pump: extra bend in front, open: elbow opens behind, out: away from the side }
+const _ra = new THREE.Vector3(), _rb = new THREE.Vector3(), _rt = new THREE.Vector3(), _rq = new THREE.Quaternion(), _rk = new THREE.Quaternion();
+function aimBone(k, bone, child, target, w) {   // turn bone (in the dummy's space) so it points along target
+  const cur = k.worldToLocal(child.getWorldPosition(_rb)).sub(k.worldToLocal(bone.getWorldPosition(_ra))).normalize();
+  _rq.setFromUnitVectors(cur, target);
+  if (w < 1) _rq.slerp(_q2.identity(), 1 - w);
+  _rq.premultiply(_rk).multiply(_q2.copy(_rk).invert());   // dummy space -> world
+  const W = bone.getWorldQuaternion(_q).premultiply(_rq);
+  bone.quaternion.copy(bone.parent.getWorldQuaternion(_q2).invert().multiply(W)); bone.updateMatrixWorld(true);
+}
+function runArms(b, o, w) {
+  const G = b.gait, k = b.puppet.k; k.getWorldQuaternion(_rk);
+  const lf = G.front ? G.front.Walk : 0;   // shared phase where the left foot is furthest forward
+  const c = Math.cos(2 * Math.PI * (G.phase - lf));   // +1: left foot forward -> left arm back, right arm forward
+  for (const [side, sg, sw] of [['Left', 1, -c], ['Right', -1, c]]) {
+    const arm = k.getObjectByName(side + 'Arm'), fore = k.getObjectByName(side + 'ForeArm'), hand = k.getObjectByName(side + 'Hand');
+    if (!arm || !fore || !hand) continue;
+    const th = sw > 0 ? sw * o.amp : sw * (o.amp + (o.back || 0));   // forward is +z in the dummy's space
+    _rt.set(sg * Math.sin(o.out), -Math.cos(th), Math.sin(th)).normalize();
+    aimBone(k, arm, fore, _rt, w);
+    const e = th + o.elbow + Math.max(0, sw) * (o.pump || 0) - Math.max(0, -sw) * (o.open || 0);   // forearm angle from straight down; the elbow opens on the back swing so the fist passes the hip
+    _rt.set(sg * Math.sin(o.out) * 0.4, -Math.cos(e), Math.sin(e)).normalize();
+    aimBone(k, fore, hand, _rt, w);
+  }
 }
 // The library jog lands both feet turned about 7° to the right (they straighten during the step).
 // Mac wants them pointing forward: turn each foot about "up" by its own toe yaw, while it's flat-ish.
