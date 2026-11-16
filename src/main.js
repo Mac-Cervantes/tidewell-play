@@ -86,11 +86,14 @@ const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 200);
 const hemi = new THREE.HemisphereLight(0xffffff, 0x7fb07a, 1.0);
 scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xffffff, 3);
+// a soft light from the camera's side, no shadows, so faces and fronts are never left dark (Mac, v0.1.62, night mockup B);
+// strongest at night, when the moon is behind everyone. Per time of day in TOD[].fill.
+const fillLight = new THREE.DirectionalLight(0xffffff, 0);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
 const sc = sun.shadow.camera; sc.left = -18; sc.right = 18; sc.top = 18; sc.bottom = -18; sc.near = 1; sc.far = 80;
 sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.03;
-scene.add(sun, sun.target);
+scene.add(sun, sun.target, fillLight, fillLight.target);
 
 // ---------- loading ----------
 const manager = new THREE.LoadingManager();
@@ -1997,10 +2000,10 @@ function updateCropTags() {
 
 // ---------- time of day ----------
 const TOD = {
-  morning: { grade: 'rgba(255,170,205,0.55)', sky: ['#ffd6e4', '#fff3dc'], fog: 0xfbe8e0, sun: [0xffe1c9, 2.3], sunPos: [16, 10, -4], hemi: [0xffe6f0, 0xc9e4d0, 1.35], water: 0x9ad6f2, lamps: 0, clock: '7:40 AM', exp: 1.14 },
-  day:     { grade: 'rgba(0,0,0,0)', sky: ['#5ec0ff', '#d6f2ff'], fog: 0xcdeeff, sun: [0xfffbe8, 3.0], sunPos: [10, 20, -6], hemi: [0xffffff, 0x7fb07a, 1.0], water: 0x2f9be0, lamps: 0, clock: '2:15 PM', exp: 1.05 },
-  evening: { grade: 'rgba(255,140,60,0.35)', sky: ['#ff9a72', '#ffdcaa'], fog: 0xffd2b0, sun: [0xffb47a, 1.9], sunPos: [-18, 8, -4], hemi: [0xffd9bd, 0x7a6a80, 0.95], water: 0x3f6fa8, lamps: 2.5, clock: '6:50 PM', exp: 1.0 },
-  night:   { grade: 'rgba(35,65,195,0.24)', sky: ['#1b3062', '#3c5ea4'], fog: 0x263e6c, sun: [0xa4bcff, 3.3], sunPos: [-8, 16, -10], hemi: [0x4a6cc2, 0x18244a, 1.1], water: 0x285a8c, lamps: 6, clock: '11:20 PM', exp: 1.22, moon: 1, glint: 0.3 },
+  morning: { grade: 'rgba(255,170,205,0.55)', sky: ['#ffd6e4', '#fff3dc'], fog: 0xfbe8e0, sun: [0xffe1c9, 2.3], fill: [0xfff0e6, 0.55], sunPos: [16, 10, -4], hemi: [0xffe6f0, 0xc9e4d0, 1.35], water: 0x9ad6f2, lamps: 0, clock: '7:40 AM', exp: 1.14 },
+  day:     { grade: 'rgba(0,0,0,0)', sky: ['#5ec0ff', '#d6f2ff'], fog: 0xcdeeff, sun: [0xfffbe8, 3.0], fill: [0xffffff, 0.45], sunPos: [10, 20, -6], hemi: [0xffffff, 0x7fb07a, 1.0], water: 0x2f9be0, lamps: 0, clock: '2:15 PM', exp: 1.05 },
+  evening: { grade: 'rgba(255,140,60,0.35)', sky: ['#ff9a72', '#ffdcaa'], fog: 0xffd2b0, sun: [0xffb47a, 1.9], fill: [0xffe2c8, 0.75], sunPos: [-18, 8, -4], hemi: [0xffd9bd, 0x7a6a80, 0.95], water: 0x3f6fa8, lamps: 2.5, clock: '6:50 PM', exp: 1.0 },
+  night:   { grade: 'rgba(35,65,195,0.24)', sky: ['#1b3062', '#3c5ea4'], fog: 0x263e6c, sun: [0xa4bcff, 3.3], fill: [0xb8c8ff, 1.6], sunPos: [-8, 16, -10], hemi: [0x4a6cc2, 0x18244a, 1.1], water: 0x285a8c, lamps: 6, clock: '11:20 PM', exp: 1.22, moon: 1, glint: 0.3 },
 };
 let todKey = 'day';
 // a soft streak of moonlight on the water, kept out ahead of the player
@@ -2030,7 +2033,7 @@ function setTOD(k) {
   document.getElementById('sky').style.background = `linear-gradient(${t.sky[0]}, ${t.sky[1]} 60%)`;
   scene.fog.color.set(t.fog);
   document.getElementById('grade').style.background = t.grade;
-  sun.color.set(t.sun[0]); sun.intensity = t.sun[1];
+  sun.color.set(t.sun[0]); sun.intensity = t.sun[1]; fillLight.color.set(t.fill[0]); fillLight.intensity = t.fill[1];
   hemi.color.set(t.hemi[0]); hemi.groundColor.set(t.hemi[1]); hemi.intensity = t.hemi[2];
   if (waterMat) waterMat.color.set(t.water);
   lanternLights.forEach(l => l.intensity = t.lamps);
@@ -3584,6 +3587,7 @@ function update(dt) {
   camera.lookAt(_camLook);
   sun.target.position.set(player.pos.x, 0, player.pos.z - 4);
   const sp = TOD[todKey].sunPos; sun.position.set(player.pos.x + sp[0], sp[1], player.pos.z - 4 + sp[2]);
+  fillLight.position.set(camera.position.x, camera.position.y + 2, camera.position.z); fillLight.target.position.set(player.pos.x, 0.8, player.pos.z);
   // monsters
   for (const m of monsters) updateMonster(m, dt);
   updateOccluders(dt);
@@ -3752,7 +3756,7 @@ function frame() {
   let skip = false; try { skip = sessionStorage.getItem('tidewell.skipMenu') === '1'; sessionStorage.removeItem('tidewell.skipMenu'); } catch (e) {}
   if (skip) startGame(); else showMainMenu();
   window.__ready = true;
-  window.__tidewell = { get merchant() { return merchant; }, THREE, player, get S() { return S; }, fishing, settings, decor, cropIcon, farm, get body() { return body; }, fishIcon, spots, dex, tackle, farmToolMesh, plots, lotView, get clr() { return clr; }, inRock, get dig() { return digModels; }, setLook: (l) => { for (const b of Object.values(bodies)) setLook(b, l); }, joy };   // used by tools/ (screenshots, tests)
+  window.__tidewell = { get merchant() { return merchant; }, THREE, scene, sun, hemi, TOD, camera, player, get S() { return S; }, fishing, settings, decor, cropIcon, farm, get body() { return body; }, fishIcon, spots, dex, tackle, farmToolMesh, plots, lotView, get clr() { return clr; }, inRock, get dig() { return digModels; }, setLook: (l) => { for (const b of Object.values(bodies)) setLook(b, l); }, joy };   // used by tools/ (screenshots, tests)
   clock.getDelta();
   requestAnimationFrame(frame);
   // Everything else loads quietly in the background, one pack at a time so the game stays smooth:
