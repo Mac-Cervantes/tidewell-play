@@ -566,17 +566,25 @@ var sheetWatch = new MutationObserver(function (list) {
 document.querySelectorAll('.sheet').forEach(function (el) { sheetWatch.observe(el, { attributes: true, attributeFilter: ['hidden'] }); });
 
 // once a frame from main.js: footsteps, and how loud each zone is from here
-function frame(x, z, moving, onDock, tod) {
+function frame(x, z, moving, onDock, tod, stepPhase) {
   G.tod = tod;
   var d = Math.hypot(x - G.px, z - G.pz); G.px = x; G.pz = z;
   var dx = Math.max(0, Math.abs(x - 2.4) - 0.97), dz = Math.max(0, z + 3.2);
   G.dockD = onDock ? 0 : Math.hypot(dx, dz);
   if (!ctx || ctx.state !== 'running') return;
   var now = ctx.currentTime;
-  if (!moving) G.walked = 0.6;                       // so the first step lands quickly
+  var surface = onDock ? 'stepDock' : z < -2.5 ? 'stepSand' : 'stepGrass';
+  if (stepPhase != null) {
+    // Footsteps follow the legs, not the distance (Mac: after the new run animation "the sounds don't line up when running").
+    // stepPhase is the animation's own cycle, 0..1, where 0 = the left foot reaches the ground and 0.5 = the right foot.
+    // A step sounds each time the cycle crosses one of those two points, at any speed, including the last step when stopping.
+    var half = Math.floor((((stepPhase % 1) + 1) % 1) * 2);
+    if (G.half != null && half !== G.half && now - G.lastStep > 0.1) { G.lastStep = now; play(surface); }
+    G.half = half;
+  } else if (!moving) G.walked = 0.6;                // no animation cycle to follow: fall back to one step per 1.1 m
   else if (d < 1) {
     G.walked += d;
-    if (G.walked > 1.1 && now - G.lastStep > 0.26) { G.walked = 0; G.lastStep = now; play(onDock ? 'stepDock' : z < -2.5 ? 'stepSand' : 'stepGrass'); }
+    if (G.walked > 1.1 && now - G.lastStep > 0.26) { G.walked = 0; G.lastStep = now; play(surface); }
   }
   if (now - G.zoneAt > 0.2) {
     G.zoneAt = now;

@@ -267,6 +267,7 @@ export function buildActions(b, rigAnims, pool, bone, gaitKey = 'a', ual = null)
   }
   b.acts = acts; b.cur = 'Idle'; b.upBusy = 0; b.gaitKey = gaitKey;
   b.ualClips = ['Walk', 'Run'].filter(n => base[n] && fromUAL(n));   // these stand on the upright base too (see posture)
+  // NOTE (v0.1.66): main.js stepPhase() reads gait.phase and gait.front.Walk to time the footstep sounds; rename them there too
   b.gait = { phase: 0, speed: 0, w: { Idle: 1, Walk: 0, Run: 0 }, lean: 0, talk: 0, talkTo: 0 };
   if (g.legacy) { acts.Idle.low.play(); acts.Idle.up.play(); }
   else for (const n of ['Idle', 'Walk', 'Run', 'Talk']) if (acts[n]) for (const a of [acts[n].low, acts[n].up]) { a.play(); a.setEffectiveWeight(n === 'Idle' ? 1 : 0); if (n === 'Walk' || n === 'Run') a.timeScale = 0; }

@@ -884,6 +884,8 @@ function locomote(v, dt) { for (const b of Object.values(bodies)) anim.locomote(
 // play a one-shot on the upper body while the legs keep walking
 function upperOneShot(key, dur) { for (const b of Object.values(bodies)) anim.upperOneShot(b, key, dur); }
 function tickUpper(dt) { for (const b of Object.values(bodies)) anim.tickUpper(b, dt); }
+// where the legs are in their cycle, for footstep sounds: 0 = left foot lands, 0.5 = right foot lands (null on a look with no cycle)
+function stepPhase() { const g = body && body.gait; return g && g.front ? g.phase - g.front.Walk : null; }
 // chatting: the NPC you talk to plays the talk loop; the player joins in, toned down (Mac)
 const baitSheet = document.getElementById('baitShop'), rosaSheet = document.getElementById('rosaShop');
 function tickTalk() {
@@ -3564,7 +3566,7 @@ function update(dt) {
     locomote(Math.min(v, moved), dt);
   } else locomote(0, dt);
   player.moving = mag > 0.12;
-  audio.frame(player.pos.x, player.pos.z, player.moving, onDock(player.pos.x, player.pos.z), currentTOD());
+  audio.frame(player.pos.x, player.pos.z, player.moving, onDock(player.pos.x, player.pos.z), currentTOD(), stepPhase());
   weather.frame(dt, elapsed, TOD[todKey], todKey);
   animals.frame(dt, elapsed);   // ANIMALS: hens wander, peck, follow and lay
   if (player.moving) player.faceYaw = null;
