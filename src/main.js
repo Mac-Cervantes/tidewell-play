@@ -323,7 +323,7 @@ function place(kit, name, x, z, opt = {}) {
 function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
 const rnd = mulberry32(20261105);
 const lanternLights = [];
-const FISHEL_STALL = { x: 4.6, z: -1.8 };
+const FISHEL_STALL = { x: 6.6, z: -1.8 };   // 2 m further right than before v0.1.63, away from the dock (Mac)
 const BOARD = { x: -3.6, z: -1.7 };   // moved away from Higgins in v0.1.43 (Mac: too close)
 const ROSA_CART = { x: -11.4, z: -0.9, r: -0.35 };   // Rosa's Flowers, on the beach row left of the board (decision 61)   // the order board, left of Higgins (decision 50)
 // --- the dock is walkable: a corridor down its middle, height found by raycasting onto the planks
@@ -1273,7 +1273,7 @@ useBtn.addEventListener('click', () => doAction(useAction));
 
 // ---------- farming: real-time growth that keeps going while you're away ----------
 const plots = new Map();
-const NO_TILL = [[-0.7, -1.3, 1.3], [4.6, -1.4, 2.0], [3.2, -0.9, 1.0], [BOARD.x, BOARD.z, 1.2], [ROSA_CART.x, ROSA_CART.z, 2.4]];   // Higgins, Fishel's stall, Fishel, order board, Rosa's cart
+const NO_TILL = [[-0.7, -1.3, 1.3], [FISHEL_STALL.x, FISHEL_STALL.z + 0.4, 2.0], [FISHEL_STALL.x - 1.4, FISHEL_STALL.z + 0.9, 1.0], [BOARD.x, BOARD.z, 1.2], [ROSA_CART.x, ROSA_CART.z, 2.4]];   // Higgins, Fishel's stall, Fishel, order board, Rosa's cart
 const cellKey = (c) => c.x + ',' + c.z;
 function tillable(c) {
   if (spots.onBank(c.x + 0.5, c.z + 0.5)) return false;   // FISHING
