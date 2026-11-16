@@ -640,6 +640,7 @@ function kHat(b, color, parts) {
 const NPC_LOOKS = {
   higgins: { skin: '#ffd9c2', hair: 'buzz', hairColor: '#9aa3ad', eyes: 'dot', mouth: 'smile', beard: 'mustache', top: 'long', topColor: '#6a5a8c', bottom: 'pants', bottomColor: '#2a3354', shoes: '#2b2b2b' },
   fishel: { skin: '#d9825b', hair: 'buzz', hairColor: '#2a1712', eyes: 'happy', mouth: 'grin', beard: 'beard', top: 'long', topColor: '#f2c230', bottom: 'pants', bottomColor: '#2a3354', shoes: '#3a3a3a', hat: 'bucket', hatColor: '#f2c230', hatColor2: '#d9a81e' },
+  pike: { skin: '#e8b48f', hair: 'buzz', hairColor: '#d9d6cf', eyes: 'dot', mouth: 'smile', beard: 'beard', top: 'sweater', topColor: '#efe6d2', bottom: 'rolled', bottomColor: '#3d5a80', shoes: '#f2c230', shoeStyle: 'boots', hat: 'beanie', hatColor: '#c8453a', hatColor2: '#c8453a' },   // Old Pike, look A (Mac, v0.1.65)
   rosa: { skin: '#b4643f', hair: 'long', hairColor: '#2a1712', eyes: 'big', mouth: 'smile', blush: true, top: 'tee', topColor: '#e8846a', bottom: 'pants', bottomColor: '#f4e6c8', shoes: '#7a4a2a', hat: 'sunhat', hatColor: '#f2d38a', hatColor2: '#e8846a' },
 };
 const NPC_HATS = {
@@ -664,7 +665,7 @@ function syncPuppet(b) {
 function syncPuppets() {
   // ANIM: after the copy, stand upright while idle (anim.posture); fishing and farm tools keep their own poses
   const busy = farm.mode !== 'off' ? 2 : fishing.state !== 'idle' || rodState.w > 0.01 ? 1 : 0;
-  for (const b of [body, higgins && higgins.b, fishel && fishel.b, rosa && rosa.b]) if (b && b.root.visible) { syncPuppet(b); anim.posture(b, b === body ? busy : 0); }
+  for (const b of [body, higgins && higgins.b, fishel && fishel.b, rosa && rosa.b, pike && pike.b]) if (b && b.root.visible) { syncPuppet(b); anim.posture(b, b === body ? busy : 0); }
   // hanging from a farm tool: the dummy's arms are shorter than the rig's, so lift it until its hands meet the handle
   const P = body && body.puppet; if (!P) return;
   const tm = farmToolMesh[farmSel()];
@@ -1421,7 +1422,7 @@ function doAction(a) {
   if (a.go) { a.go(); return; }   // STORE: an action that brings its own handler
   const cx = a.cell ? a.cell.x + 0.5 : null, cz = a.cell ? a.cell.z + 0.5 : null;
   if (a.cell) player.faceYaw = Math.atan2(cx - player.pos.x, cz - player.pos.z);
-  if (a.kind === 'talk') { if (a.key === 'fishel') openBaitShop(); else if (a.key === 'rosa') openRosaShop(); else startTalk(); return; }
+  if (a.kind === 'talk') { if (a.key === 'fishel') openBaitShop(); else if (a.key === 'rosa') openRosaShop(); else if (a.key === 'pike') talkPike(); else startTalk(); return; }
   if (a.kind === 'board') { openOrders(true); return; }
   if (a.kind === 'lot') { openLotSheet(a.lot); return; }
   if (a.kind === 'clear') { startClear(a.item); return; }
@@ -1835,6 +1836,7 @@ function pickUse() {
     const P = player.pos, d = (x, z) => Math.hypot(P.x - x, P.z - z), cand = [];
     if (nearHiggins()) cand.push({ a: { kind: 'talk', key: 'higgins' }, d: d(higgins.pos.x, higgins.pos.z) });
     if (nearFishel()) cand.push({ a: { kind: 'talk', key: 'fishel' }, d: d(fishel.pos.x, fishel.pos.z) });
+    if (nearPike()) cand.push({ a: { kind: 'talk', key: 'pike' }, d: d(pike.pos.x, pike.pos.z) });
     if (nearRosa()) cand.push({ a: { kind: 'talk', key: 'rosa' }, d: d(rosa.pos.x, rosa.pos.z) });
     if (nearBoard()) cand.push({ a: { kind: 'board', key: 'board' }, d: d(BOARD.x, BOARD.z + 0.5) });
     if (cand.length) {
@@ -2426,6 +2428,35 @@ function updateFishel(dt) {
   let a = want - fishel.yaw; a = Math.atan2(Math.sin(a), Math.cos(a)); fishel.yaw += a * Math.min(1, dt * 4);
   fishel.b.root.rotation.y = fishel.yaw; anim.idleTick(fishel.b, dt);
 }
+// ---------- Old Pike: the old fisherman where the river meets the sea (Mac, v0.1.65: look A, spot 2) ----------
+// He posts fish orders on the board; later he's the fisherman you can hire (decision 35).
+const PIKE_AT = { x: -11.6, z: -4.6, yaw: -1.6 };   // the spot from the mockup: the sand corner where the river runs out
+let pike = null;
+function makePike() {
+  const b = makeBody('m'); b.root.visible = true;
+  dressNPC(b, 'pike');
+  if (b.tools.rod) b.tools.rod.visible = true;
+  const pos = new THREE.Vector3(PIKE_AT.x, 0, PIKE_AT.z);
+  pike = { b, pos, yaw: PIKE_AT.yaw };
+  b.root.position.set(pos.x, groundY(pos.x, pos.z), pos.z); b.root.rotation.y = pike.yaw;
+}
+function updatePike(dt) {
+  if (!pike) return;
+  const d = Math.hypot(player.pos.x - pike.pos.x, player.pos.z - pike.pos.z);
+  const want = d < 3 ? Math.atan2(player.pos.x - pike.pos.x, player.pos.z - pike.pos.z) : PIKE_AT.yaw;   // only looks round when you're right beside him
+  let a = want - pike.yaw; a = Math.atan2(Math.sin(a), Math.cos(a)); pike.yaw += a * Math.min(1, dt * 3);
+  pike.b.root.rotation.y = pike.yaw; anim.idleTick(pike.b, dt);
+}
+const nearPike = () => pike && Math.hypot(player.pos.x - pike.pos.x, player.pos.z - pike.pos.z) < 1.9;
+function talkPike() {
+  const who = { name: 'Old Pike', role: 'fisherman', pos: pike.pos };
+  const menu = (msg) => showDialog(msg, [
+    { label: 'What do you need?', primary: true, go: () => { closeDialog(); openOrders(); } },
+    { label: 'Any tips?', go: () => menu(['See the rocks in the river? Fish hide by them. Cast close and the trout, the salmon, even a darter might bite.', 'Night fish and day fish are different folk. Come back after dark sometime.', 'Better bait, better fish. Worms are fine. A Glow Lure is finer.'][Math.floor(Math.random() * 3)]) },
+    { label: 'Bye', go: () => closeDialog() },
+  ], who);
+  menu(['Shh. You\u2019ll scare the fish.', 'Mornin\u2019. Or is it evenin\u2019? The fish don\u2019t care.', 'Sit a while. River\u2019s talkative today.'][Math.floor(Math.random() * 3)]);
+}
 // ---------- Rosa's Flowers: the seed cart (decision 61, opens at town level 2) ----------
 let rosa = null;
 const rosaOpen = () => S.level >= 2;
@@ -2463,14 +2494,15 @@ const nearHiggins = () => higgins && Math.hypot(player.pos.x - higgins.pos.x, pl
 // ---------- dialog ----------
 const dlg = { open: false };
 const dEl = document.getElementById('dialog'), dText = document.getElementById('dText'), dChoices = document.getElementById('dChoices');
-function showDialog(text, choices) {
+function showDialog(text, choices, who = null) {   // who: { name, role, pos } for someone other than Higgins
   dlg.open = true; dEl.hidden = false; dText.textContent = text;
+  dEl.querySelector('.dname').innerHTML = who ? `${who.name} <span>${who.role}</span>` : 'Higgins <span>concierge</span>';
   dChoices.innerHTML = '';
   for (const c of choices) {
     const btn = document.createElement('button'); btn.textContent = c.label; if (c.primary) btn.className = 'primary'; if (c.locked) btn.className = 'locked';
     btn.addEventListener('click', () => c.go()); dChoices.appendChild(btn);
   }
-  if (higgins) player.faceYaw = Math.atan2(higgins.pos.x - player.pos.x, higgins.pos.z - player.pos.z);
+  const f = who ? who.pos : higgins && higgins.pos; if (f) player.faceYaw = Math.atan2(f.x - player.pos.x, f.z - player.pos.z);
 }
 function closeDialog() { dlg.open = false; dEl.hidden = true; }
 function sayLines(lines, done) {
@@ -3420,7 +3452,7 @@ function initWeather() {
     puddleOk: (x, z) => { const k = cellKey({ x: Math.floor(x), z: Math.floor(z) }); return !plots.has(k) && !decorOcc.has(k) && groundY(x, z) > WATER_Y + 0.2; },
     splash: () => audio.play('puddle'),   // the little ring itself is drawn by weather.js
     // where everyone's feet are: a soft blob goes under each character while the rain hides the real shadows
-    feet: () => [{ x: player.pos.x, y: player.y || 0, z: player.pos.z }, ...[higgins, fishel, rosa].filter(Boolean).map(n => ({ x: n.pos.x, y: floorY(n.pos.x, n.pos.z), z: n.pos.z }))] });
+    feet: () => [{ x: player.pos.x, y: player.y || 0, z: player.pos.z }, ...[higgins, fishel, rosa, pike].filter(Boolean).map(n => ({ x: n.pos.x, y: floorY(n.pos.x, n.pos.z), z: n.pos.z }))] });
 }
 function renderWx() {
   document.querySelectorAll('.wx-seg button').forEach(x => x.classList.toggle('on', (settings.wxOverride || 'auto') === x.dataset.w));
@@ -3517,7 +3549,7 @@ function update(dt) {
       if (!FEATURES.combat && Math.abs(np.x) <= 1.0 && gateToastT <= 0) { toast('The wilds open in a later update'); gateToastT = 4; }
     }
     // step around Higgins
-    for (const n of [higgins, fishel]) if (n) { const hx = np.x - n.pos.x, hz = np.z - n.pos.z, hd = Math.hypot(hx, hz); if (hd < 0.65) { np.x = n.pos.x + hx / hd * 0.65; np.z = n.pos.z + hz / hd * 0.65; } }
+    for (const n of [higgins, fishel, pike]) if (n) { const hx = np.x - n.pos.x, hz = np.z - n.pos.z, hd = Math.hypot(hx, hz); if (hd < 0.65) { np.x = n.pos.x + hx / hd * 0.65; np.z = n.pos.z + hz / hd * 0.65; } }
     // the bait stall is solid
     { const sx = np.x - FISHEL_STALL.x, sz = np.z - FISHEL_STALL.z; if (Math.abs(sx) < 1.25 && Math.abs(sz) < 1.0) { np.x = player.pos.x; np.z = player.pos.z; } }
     if (rosa) { const c = Math.cos(ROSA_CART.r), sn = Math.sin(ROSA_CART.r), dx = np.x - ROSA_CART.x, dz = np.z - ROSA_CART.z;
@@ -3626,7 +3658,7 @@ function update(dt) {
   tickLevelUp();
   gateToastT -= dt;
   updateHiggins(dt);
-  updateFishel(dt);
+  updateFishel(dt); updatePike(dt);
   updateRosa(dt);
   tickClock();
   saveTimer += dt; if (saveTimer > 5) { saveTimer = 0; persistNow(); }
@@ -3713,6 +3745,7 @@ function frame() {
   setBody(S.body || 'm');
   makeHiggins();
   makeFishel();
+  makePike();
   ensureRosa();
   // STORE: everything the store borrows from this file, in one place
   store.init({ THREE, scene, camera, renderer, M, SCALE, groundY, player, joy, dlg, get S() { return S; }, get body() { return body; }, NO_TILL, ICON, lanternLights, farmToolMesh,
