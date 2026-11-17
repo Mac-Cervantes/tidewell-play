@@ -455,7 +455,7 @@ function buildWorld() {
   bobbers.push({ o: ship, base: WATER_Y - 0.15, ride: true, sp: 0.8, ph: 2, rock: 0.03 });
   place('pirate', 'palm-detailed-bend', -5.2, -3.9, { r: 2.4, s: 1.0 });
   place('pirate', 'palm-detailed-straight', 7.8, -3.6, { r: 0.3, s: 1.0 });
-  place('pirate', 'palm-detailed-bend', 10.5, -4.6, { r: -0.6, s: 0.85 });
+  // the bent palm at 10.5, -4.6 stood in the sea; removed (Mac, v0.1.78)
   place('pirate', 'rocks-sand-a', -8.0, -6.6, { s: 0.6, r: 1 });
   place('pirate', 'rocks-sand-a', 8.5, -6.8, { s: 0.5, r: 2.5 });
 
