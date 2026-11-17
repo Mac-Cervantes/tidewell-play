@@ -171,41 +171,43 @@ function anim(k, want, dt, speed = 1) {
   d.acts[name].timeScale = speed; d.mx.update(dt);
 }
 const dogAnim = (name, dt, speed) => anim('dog', name, dt, speed);
-// ---------- cat loaves (Mac's picture, v0.1.73): what the cat does when it's been still for a while ----------
-// The pack has no sitting or lying clip, so the loaf is posed in code on top of the idle: the legs tuck up into the body, the body
-// settles onto the ground and the tail wraps round the hip. 'full' = all four tucked, 'partial' = front paws out, 'faceplant' = head down (asleep).
-const LOAF = { legsF: ['Bone014', 'Bone017'], legsB: ['Bone008', 'Bone011'], tail: ['Bone004', 'Bone005', 'Bone006', 'Bone007'],
-  tuck: 0.12, drop: 0.98, tailX: [1.7, 0, 0, 0], tailZ: [-0.5, -1.1, -1.0, -0.8], frontX: 1.4, frontScale: 0.75, headX: -1.15 };
-function catPose(rig, pose, k) {
-  if (!rig) return;
+// ---------- the cat loaf (v0.1.74, from Mac's photo): what the cat does when it's been still for a while ----------
+// One pose, the full loaf: compact body, head up, paws tucked under, tail wrapped round its side. (v0.1.73's partial and face-plant
+// loaves are gone, Mac: "those don't make physical sense".) The pack has no sitting clip, so it's posed in code on top of the idle:
+// the legs tuck up into the body, the body settles, shortens a little and tips its chest up, and the tail is laid along the hip.
+const LOAF = { legs: ['Bone014', 'Bone017', 'Bone008', 'Bone011'], tailBones: ['Bone004', 'Bone005', 'Bone006', 'Bone007'],
+  tuck: 0.05, drop: 0.98, squash: [0.82, 1.08], pitch: -0.08,
+  tail: [[0.7, -0.8, -0.1], [0.55, -0.3, 0.8], [0.1, -0.05, 1], [-0.3, 0, 1]] };   // each tail piece's direction: x = the cat's side, y = up, z = its nose
+function catPose(rig, k) {
+  if (!rig || rig.noPose) return;
   if (!rig.b) {
     rig.b = {}; rig.s.traverse(o => { if (o.isBone) rig.b[o.name] = o; });
-    if (!rig.b.Bone014 || !rig.b.Bone016) { rig.noPose = true; return; }
-    rig.w.updateMatrixWorld(true);
-    const sh = rig.b.Bone014.getWorldPosition(new THREE.Vector3()), ft = rig.b.Bone016.getWorldPosition(new THREE.Vector3()), ws = rig.w.getWorldScale(new THREE.Vector3()).x || 1;
-    rig.leg = (sh.y - ft.y) / ws; rig.q = new THREE.Quaternion(); rig.e = new THREE.Euler();
+    if (![...LOAF.legs, ...LOAF.tailBones, 'Bone016'].every(n => rig.b[n])) { rig.noPose = true; return; }
+    rig.w.updateWorldMatrix(true, true);
+    const at = (n) => rig.b[n].getWorldPosition(new THREE.Vector3());   // leg length along the bones, so it's the same whatever pose the cat is in right now
+    rig.leg = (at('Bone014').distanceTo(at('Bone015')) + at('Bone015').distanceTo(at('Bone016'))) / (rig.w.getWorldScale(new THREE.Vector3()).x || 1);
+    rig.q = new THREE.Quaternion(); rig.q2 = new THREE.Quaternion(); rig.wq = new THREE.Quaternion(); rig.v = new THREE.Vector3(); rig.up = new THREE.Vector3(0, 1, 0);
   }
-  if (rig.noPose) return;
-  const b = rig.b, L = LOAF, rot = (n, x, z) => { if (b[n]) { rig.e.set(x * k, 0, z * k); b[n].quaternion.multiply(rig.q.setFromEuler(rig.e)); } };
-  const tuck = 1 + (L.tuck - 1) * k, front = pose === 'partial' ? 1 + (L.frontScale - 1) * k : tuck;
-  for (const n of L.legsB) if (b[n]) b[n].scale.setScalar(tuck);
-  for (const n of L.legsF) if (b[n]) b[n].scale.setScalar(front);
+  const b = rig.b, L = LOAF, tuck = 1 + (L.tuck - 1) * k;
+  for (const n of L.legs) b[n].scale.setScalar(tuck);
   rig.s.position.y = rig.baseY - rig.leg * L.drop * k;
+  rig.s.scale.set(1 + (L.squash[0] - 1) * k, 1 + (L.squash[1] - 1) * k, 1);   // the model's own x is its nose-to-tail line
+  rig.w.rotation.x = L.pitch * k;
   if (k <= 0.001) return;
-  if (pose === 'partial') for (const n of L.legsF) rot(n, L.frontX, 0);
-  L.tail.forEach((n, i) => rot(n, L.tailX[i], L.tailZ[i]));
-  if (pose === 'faceplant') rot('Bone003', L.headX, 0);
+  rig.w.updateWorldMatrix(true, true); rig.w.getWorldQuaternion(rig.wq);
+  L.tailBones.forEach((n, i) => {
+    const bone = b[n]; rig.v.set(L.tail[i][0], L.tail[i][1], L.tail[i][2]).normalize().applyQuaternion(rig.wq);
+    rig.q.setFromUnitVectors(rig.up, rig.v);                                   // point the bone (its own +y) along that direction…
+    bone.parent.getWorldQuaternion(rig.q2).invert(); rig.q2.multiply(rig.q);   // …in its parent's space
+    bone.quaternion.slerp(rig.q2, k); bone.updateMatrixWorld(true);
+  });
 }
-// o is the stray or the pet cat: after a few seconds of standing still it settles into a loaf, and stands up quickly when it moves
+// o is the stray or the pet cat: after a few seconds of standing still it settles into the loaf, and stands up quickly when it moves
 function catLoaf(o, dt, still, sleepy) {
   o.stillT = still ? (o.stillT || 0) + dt : 0;
-  if (!still) o.loaf = null;
-  else if (sleepy) o.loaf = 'faceplant';
-  else if (!o.loaf && o.stillT > 3.5) o.loaf = Math.random() < 0.6 ? 'full' : 'partial';
-  else if (o.loaf === 'faceplant') o.loaf = 'full';   // woke up
-  if (o.loaf) o.loafWas = o.loaf;
+  o.loaf = still && (sleepy || o.stillT > 3.5);
   const want = o.loaf ? 1 : 0; o.loafK = (o.loafK || 0) + (want - (o.loafK || 0)) * Math.min(1, dt * (want ? 2.5 : 8));
-  catPose(rigs.cat, o.loafWas || 'full', o.loafK < 0.01 ? 0 : o.loafK);
+  catPose(rigs.cat, o.loafK < 0.01 ? 0 : o.loafK);
 }
 function buildCatBed() {   // a round basket with a cushion
   const g = new THREE.Group();
