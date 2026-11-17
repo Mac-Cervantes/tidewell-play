@@ -17,6 +17,7 @@ const K = PETS.kinds;
 const TRY = false;                            // TRY: the try-out panel (levels, free pets, treats, no daily limit, fps). Off since the merge (v0.1.68).
 
 let A = null, THREE = null, ready = false, dogSrc = null;
+const srcs = {};                              // loaded models by kind: dog (Shiba), cat
 const rt = {};                                // each pet in the world, by kind: { g, x, z, y, yaw, sp, ... }
 const strays = {};                            // the fish jumping by the dock, the puppy in its crate
 let ui = null, ring = null, card = null, sheet = null, ray = null;
@@ -43,6 +44,8 @@ DECOR.fishbowl = { name: 'Fish bowl', model: ['pirate', 'barrel', 0.6], size: [1
 ITEMS.decor_fishbowl = { name: DECOR.fishbowl.name, kind: 'decor', rarity: 'common', price: 0, decor: 'fishbowl' };
 DECOR.doghouse = { name: 'Doghouse', model: ['pirate', 'barrel', 0.6], size: [2, 2], buy: 0, fixed: true, build: () => buildDoghouse() };
 ITEMS.decor_doghouse = { name: DECOR.doghouse.name, kind: 'decor', rarity: 'common', price: 0, decor: 'doghouse' };
+DECOR.catbed = { name: 'Cat basket', model: ['pirate', 'barrel', 0.6], size: [1, 1], buy: 0, fixed: true, build: () => buildCatBed() };
+ITEMS.decor_catbed = { name: DECOR.catbed.name, kind: 'decor', rarity: 'common', price: 0, decor: 'catbed' };
 if (STORE.extra) STORE.extra.items.treat = {   // one more tile in Nell's Animals tab
   pic: () => `<img src="${treatPicture()}" alt="">`,
   info: () => ({ name: `Pet treats ×${PETS.treat.pack}`, price: PETS.treat.buy, level: STORE.level, own: false, once: false, have: A ? A.invCount('pet_treat') : 0, blurb: '' }),
@@ -65,6 +68,8 @@ export function init(api) {
     down: '<path d="M6 9l6 6 6-6"/>',
     fishbowl: '<path d="M8 5h8"/><path d="M9 5c-4 2-5.5 5-5.5 8a8.5 8.5 0 0 0 17 0c0-3-1.5-6-5.5-8"/><path d="M5 12q3.5-2 7 0t7 0"/>',
     doghouse: '<path d="M3 11l9-7 9 7v9H3z"/><path d="M9 20v-5a3 3 0 0 1 6 0v5"/>',
+    catbed: '<ellipse cx="12" cy="15" rx="9" ry="5"/><path d="M3 15c0-4 4-7 9-7s9 3 9 7"/>',
+    paw: '<ellipse cx="12" cy="16" rx="5.5" ry="4.5"/><ellipse cx="5" cy="10.5" rx="2.2" ry="2.8"/><ellipse cx="9.3" cy="6.2" rx="2.2" ry="2.8"/><ellipse cx="14.7" cy="6.2" rx="2.2" ry="2.8"/><ellipse cx="19" cy="10.5" rx="2.2" ry="2.8"/>',
   });
 }
 export function start() {
@@ -72,7 +77,10 @@ export function start() {
   buildUI();
   ready = true;
   // the puppy's model: its own pack, loaded quietly in the background (decision 57); the fish is made in code
-  import('../assets/pack-pets.js').then(m => A.parseGLB(m.default.ShibaInu, '')).then(g => { dogSrc = g; }).catch(() => {});
+  import('../assets/pack-pets.js').then(m => Promise.all([
+    A.parseGLB(m.default.ShibaInu, '').then(g => { dogSrc = g; srcs.dog = g; }),
+    A.parseGLB(m.default.Cat, '').then(g => { srcs.cat = g; }),
+  ])).catch(() => {});
 }
 
 // ---------- models ----------
@@ -133,39 +141,50 @@ function buildCrate() {
   for (const [x, z] of [[-S / 2, -S / 2], [S / 2, -S / 2], [-S / 2, S / 2], [S / 2, S / 2]]) g.add(mesh(new THREE.BoxGeometry(0.08, Hh + 0.04, 0.08), dark, x, Hh / 2, z));
   return g;
 }
-// the puppy: the one Shiba model (nose along +z), set on its feet, sized by length, with one action per clip
-let dogRig = null;
-function buildDog() {
-  if (dogRig) return dogRig;
-  const s = dogSrc.scene, w = new THREE.Group();
-  s.traverse(o => { if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; const ms = Array.isArray(o.material) ? o.material : [o.material]; ms.forEach(m => { m.metalness = 0; m.roughness = 0.85; m.flatShading = true; m.needsUpdate = true; }); } });
+// the walkers (puppy, cat): one model each (nose along +z), set on its feet, sized by length, with one action per clip
+const CAT_COLORS = { Grey: 0x5a5a66, White: 0xf4f1ea, Pink: 0xf29bb2 };   // the pack's tuxedo cat; the colours didn't survive the file conversion
+// the cat pack only has Idle and Walking, so every other clip the code asks for falls back to one of those
+const CLIP = { cat: { Idle: 'Idle', Walk: 'Walking', Gallop: 'Walking', Idle_2: 'Idle', Idle_2_HeadLow: 'Idle', Eating: 'Idle', Jump_ToIdle: 'Idle', Death: 'Idle' } };
+const rigs = {};
+function buildRig(k) {
+  if (rigs[k]) return rigs[k];
+  const src = srcs[k], s = src.scene, w = new THREE.Group();
+  s.traverse(o => { if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; const ms = Array.isArray(o.material) ? o.material : [o.material]; ms.forEach(m => { m.metalness = 0; m.roughness = 0.85; m.flatShading = true; if (k === 'cat' && CAT_COLORS[m.name] != null) m.color.setHex(CAT_COLORS[m.name]); m.needsUpdate = true; }); } });
   s.updateMatrixWorld(true);
   const box = new THREE.Box3().setFromObject(s, true), sz = box.getSize(new THREE.Vector3()), c = box.getCenter(new THREE.Vector3());
-  s.position.set(-c.x, -box.min.y, -c.z); w.add(s); w.scale.setScalar(K.dog.length / Math.max(sz.x, sz.z));
+  s.position.set(-c.x, -box.min.y, -c.z); w.add(s); w.scale.setScalar(K[k].length / Math.max(sz.x, sz.z));
   const mx = new THREE.AnimationMixer(s), acts = {};
-  for (const a of dogSrc.animations) acts[a.name.split('|').pop()] = mx.clipAction(a);
-  dogRig = { w, mx, acts, cur: '' };
-  return dogRig;
+  for (const a of src.animations) acts[a.name.split('|').pop()] = mx.clipAction(a);
+  return (rigs[k] = { w, mx, acts, cur: '' });
 }
-// blend to a clip; 'Death' is borrowed as the lying-down pose (no sleep clip in the pack): it starts near its end and holds there
-function dogAnim(name, dt, speed = 1) {
-  const d = dogRig; if (!d) return;
+const buildDog = () => buildRig('dog');
+// blend to a clip; the puppy's 'Death' is borrowed as its lying-down pose (no sleep clip in the pack): it starts near its end and holds there
+function anim(k, want, dt, speed = 1) {
+  const d = rigs[k]; if (!d) return;
+  const name = (CLIP[k] && CLIP[k][want]) || want, once = k === 'dog' && (name === 'Death' || name === 'Jump_ToIdle');
   if (d.cur !== name) {
-    const a = d.acts[name]; a.reset(); a.enabled = true; a.setLoop(name === 'Death' || name === 'Jump_ToIdle' ? THREE.LoopOnce : THREE.LoopRepeat); a.clampWhenFinished = true;
-    if (name === 'Death') a.time = a.getClip().duration * 0.88;
+    const a = d.acts[name]; a.reset(); a.enabled = true; a.setLoop(once ? THREE.LoopOnce : THREE.LoopRepeat); a.clampWhenFinished = true;
+    if (k === 'dog' && name === 'Death') a.time = a.getClip().duration * 0.88;
     a.fadeIn(0.22).play(); if (d.cur) d.acts[d.cur].fadeOut(0.22); d.cur = name;
   }
   d.acts[name].timeScale = speed; d.mx.update(dt);
+}
+const dogAnim = (name, dt, speed) => anim('dog', name, dt, speed);
+function buildCatBed() {   // a round basket with a cushion
+  const g = new THREE.Group();
+  g.add(mesh(new THREE.CylinderGeometry(0.4, 0.34, 0.16, 12), mat(0xb9793f), 0, 0.08, 0));
+  const c = mesh(new THREE.CylinderGeometry(0.33, 0.33, 0.06, 12), mat(0xf2a0b5), 0, 0.17, 0); c.castShadow = false; g.add(c);
+  return g;
 }
 
 // ---------- the pets in the world ----------
 function spawn(k, x, z) {
   if (rt[k]) return rt[k];
-  if (k === 'dog' && !dogSrc) return null;
+  if (k !== 'fish' && !srcs[k]) return null;
   const P = A.player.pos, g = new THREE.Group();
   const R = { k, g, x: x ?? P.x - 0.8, z: z ?? P.z, y: 0, yaw: 0, sp: 0, k1: 1, loop: 0, spin: 0, roamT: 1, goal: null, look: null, stuck: 0, woke: false, doze: false, out: false, bubT: 2, shot: null, slot: 'back', slotT: 0 };
   if (k === 'fish') { R.fish = buildFish(); R.bub = buildBubble(); R.blob = buildBlob(); R.tail = R.fish.userData.tail; g.add(R.fish); g.add(R.bub); A.scene.add(R.blob); R.y = 0.5; }
-  else { const d = buildDog(); d.w.position.set(0, 0, 0); d.w.rotation.set(0, 0, 0); g.add(d.w); }
+  else { const d = buildRig(k); d.w.position.set(0, 0, 0); d.w.rotation.set(0, 0, 0); g.add(d.w); }
   A.scene.add(g); rt[k] = R;
   return R;
 }
@@ -188,8 +207,8 @@ const stand = (R, dt) => step(R, R.x, R.z, 0, dt, false);
 function face(R, x, z, dt) { let dy = Math.atan2(x - R.x, z - R.z) - R.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); R.yaw += dy * Math.min(1, dt * 4); }
 function hop(R, x, z) { pop('pop', R.x, R.y + 0.3, R.z); R.x = x; R.z = z; R.stuck = 0; pop('pop', x, R.y + 0.3, z); }
 // where a pet waits when it's "at home" but its bed isn't placed yet: on the sand beside the dock steps
-const waitSpot = (k) => (k === 'dog' ? { x: A.DOCK.x + A.DOCK.half + 0.5, z: -2.85 } : { x: A.DOCK.x - A.DOCK.half - 0.6, z: -3.0 });
-const anchorY = (R) => R.y + (R.k === 'dog' ? 0.35 : 0);
+const waitSpot = (k) => (k === 'dog' ? { x: A.DOCK.x + A.DOCK.half + 0.5, z: -2.85 } : k === 'cat' ? { x: A.DOCK.x - A.DOCK.half - 1.5, z: -2.6 } : { x: A.DOCK.x - A.DOCK.half - 0.6, z: -3.0 });
+const anchorY = (R) => R.y + (R.k === 'dog' ? 0.35 : R.k === 'cat' ? 0.28 : 0);
 // the spot a following pet heads for: behind you, or (the puppy) beside you when it feels like it and there's room
 function slotAt(name) {
   const P = A.player.pos, yaw = A.player.yaw, fx_ = Math.sin(yaw), fz = Math.cos(yaw), rx = Math.cos(yaw), rz = -Math.sin(yaw);
@@ -222,7 +241,7 @@ function follow(R, dt, canSide) {
     if (!R.goal) R.roamT = 1;
   }
   if (R.goal) {
-    if (step(R, R.goal.x, R.goal.z, R.k === 'dog' ? 1.1 : 0.75, dt, false) < 0.08 || R.stuck > 0.6) { R.goal = null; R.roamT = rnd(1.2, 3.4); R.look = nearestThing(R); R.stuck = 0; }
+    if (step(R, R.goal.x, R.goal.z, R.k === 'fish' ? 0.75 : 1.1, dt, false) < 0.08 || R.stuck > 0.6) { R.goal = null; R.roamT = rnd(1.2, 3.4); R.look = nearestThing(R); R.stuck = 0; }
     return 'roam';
   }
   stand(R, dt); const L = R.look || P; face(R, L.x, L.z, dt);
@@ -237,7 +256,7 @@ function nearestThing(R) {
 export function frame(dt, elapsed) {
   if (!ready) return;
   { const now = performance.now(); if (lastT) fpsAvg += (1000 / Math.max(1, now - lastT) - fpsAvg) * 0.05; lastT = now; }   // real time: dt is capped, so it can't measure a slow phone
-  tickStrays(dt, elapsed);
+  tickStrays(dt, elapsed); tickCat(dt);
   tickFx(dt);
   const night = A.currentTOD() === 'night';
   idleT = A.player.moving ? 0 : idleT + dt;
@@ -247,7 +266,7 @@ export function frame(dt, elapsed) {
     const R = rt[p.k] || spawn(p.k); if (!R) continue;
     if (!night) R.woke = false;
     const held = !!ring && ring.p === p;                          // its buttons are open: it holds still so they're easy to tap
-    if (p.k === 'fish') tickFish(p, R, dt, elapsed, night, held); else tickDog(p, R, dt, elapsed, night, held);
+    if (p.k === 'fish') tickFish(p, R, dt, elapsed, night, held); else tickDog(p, R, dt, elapsed, night, held);   // tickDog walks the puppy and the cat
   }
   placeUI();
 }
@@ -305,12 +324,12 @@ function tickFish(p, R, dt, elapsed, night, held) {
 }
 
 function tickDog(p, R, dt, elapsed, night, held) {
-  const P = A.player.pos, house = bedRec('dog');
+  const k = p.k, P = A.player.pos, house = bedRec(k);
   const away = !p.with || (night && !R.woke && !!house);
   let clip = 'Idle', speed = 1;
   R.doze = false; R.out = false; R.atHome = false;
   if (away) {                                                     // on its mat in front of the doghouse (or waiting by the dock)
-    const h = house ? { x: house.x + 1, z: house.z + 1 + MAT_Z } : waitSpot('dog'), d = Math.hypot(h.x - R.x, h.z - R.z);
+    const h = !house ? waitSpot(k) : k === 'dog' ? { x: house.x + 1, z: house.z + 1 + MAT_Z } : { x: house.x + 0.5, z: house.z + 0.5 }, d = Math.hypot(h.x - R.x, h.z - R.z);   // the doghouse's mat, or in the cat basket
     if (d > 0.14) { if (d > 16 || R.stuck > 2.5) { R.x = h.x; R.z = h.z; R.stuck = 0; } else step(R, h.x, h.z, Math.min(5.5, 1.2 + d * 2.2), dt, d < 1.6); }
     else { stand(R, dt); R.atHome = true; R.doze = night && !!house; let dy = (R.doze ? 1.1 : 0) - R.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); R.yaw += dy * Math.min(1, dt * 4); }
   } else {
@@ -321,17 +340,17 @@ function tickDog(p, R, dt, elapsed, night, held) {
   }
   if (R.shot) { R.shot.t -= dt; if (R.shot.t <= 0) R.shot = null; }
   if (R.doze) clip = 'Death';
-  else if (R.sp > 3.4) { clip = 'Gallop'; speed = Math.min(1.5, Math.max(0.8, R.sp / 5)); }
-  else if (R.sp > 0.3) { clip = 'Walk'; speed = Math.min(1.9, Math.max(0.7, R.sp / 1.5)); }
+  else if (R.sp > 3.4) { clip = 'Gallop'; speed = k === 'cat' ? Math.min(3.2, R.sp / 1.1) : Math.min(1.5, Math.max(0.8, R.sp / 5)); }
+  else if (R.sp > 0.3) { clip = 'Walk'; speed = k === 'cat' ? Math.min(3.2, Math.max(0.7, R.sp / 1.1)) : Math.min(1.9, Math.max(0.7, R.sp / 1.5)); }
   else if (R.shot) clip = R.shot.name;
-  dogAnim(clip, dt, speed);
-  R.y = A.floorY(R.x, R.z) + (R.doze && house ? 0.04 : 0);
+  anim(k, clip, dt, speed);
+  R.y = A.floorY(R.x, R.z) + (R.doze && house ? (k === 'cat' ? 0.2 : 0.04) : 0);
   R.g.position.set(R.x, R.y, R.z); R.g.rotation.set(0, R.yaw, 0);
 }
 
 // ---------- strays: the fish jumping beside the dock (level 2), the puppy in its crate at the foot of the dock (level 4) ----------
 // (the crate sits on the sand at the foot of the dock, not on it: the dock's right side belongs to the cargo boxes and their Load button)
-const strayAt = (k) => (k === 'fish' ? { x: A.DOCK.x - A.DOCK.half - 0.95, z: -6.6 } : { x: A.DOCK.x + A.DOCK.half + 0.5, z: -2.85 });
+const strayAt = (k) => k === 'cat' ? (strays.cat ? { x: strays.cat.x, z: strays.cat.z } : { x: A.player.pos.x, z: A.player.pos.z }) : (k === 'fish' ? { x: A.DOCK.x - A.DOCK.half - 0.95, z: -6.6 } : { x: A.DOCK.x + A.DOCK.half + 0.5, z: -2.85 });
 function tickStrays(dt, elapsed) {
   const lv = A.S.level || 1;
   for (const k of ['fish', 'dog']) {
@@ -353,10 +372,69 @@ function tickStrays(dt, elapsed) {
     s.g.userData.tail.rotation.y = Math.sin(elapsed * 14) * 0.5;
   }
 }
+// ---------- the stray cat (Mac, v0.1.72): it wanders from day one and slowly becomes yours ----------
+// Shy at first (it trots off if you run at it), then curious (it comes over), then friendly (it tags along for a bit).
+// A treat or a common fish is a point (3 a day), a pet is a point (once a day); PETS.tame.perPaw points fill a paw; all paws → Adopt.
+const tame = () => { const a = st(); if (!a.cat) a.cat = { pts: 0, fed: 0, pet: 0, day: '' }; if (a.cat.day !== today()) { a.cat.day = today(); a.cat.fed = 0; a.cat.pet = 0; } return a.cat; };
+const pawsOf = () => Math.min(PETS.tame.paws, Math.floor(tame().pts / PETS.tame.perPaw));
+const commonFish = () => Object.keys(A.S.inv).filter(id => ITEMS[id] && ITEMS[id].kind === 'fish' && ITEMS[id].rarity === 'common' && A.S.inv[id] > 0).sort((x, y) => ITEMS[x].price - ITEMS[y].price)[0] || null;
+const catFood = () => (A.invCount('pet_treat') > 0 ? 'pet_treat' : commonFish());
+const catRange = (x, z) => x > -9.5 && x < 10.5 && z > -2.7 && z < 5.2 && ok(x, z);   // the beach and the grass in front of your land
+function tickCat(dt) {
+  const want = !pet('cat') && !!srcs.cat;
+  let c = strays.cat;
+  if (!want) { if (c) { A.scene.remove(c.g); delete strays.cat; } return; }
+  const P = A.player.pos;
+  if (!c) {
+    const d = buildRig('cat'), g = new THREE.Group(); d.w.position.set(0, 0, 0); d.w.rotation.set(0, 0, 0); g.add(d.w); A.scene.add(g);
+    const at = [[5.6, 1.6], [-2, 1.2], [3, 3], [0.5, 2.2]].find(q => catRange(q[0], q[1])) || [P.x + 2, P.z];
+    c = strays.cat = { k: 'cat', g, x: at[0], z: at[1], y: 0, yaw: 2, sp: 0, stuck: 0, goal: null, wait: 1.5, flee: 0, followT: 0, coolT: 0, hold: 0, px: P.x, pz: P.z, pv: 0 };
+  }
+  c.pv += (Math.hypot(P.x - c.px, P.z - c.pz) / Math.max(dt, 1e-3) - c.pv) * Math.min(1, dt * 6); c.px = P.x; c.pz = P.z;   // how fast you're coming
+  const dP = Math.hypot(P.x - c.x, P.z - c.z), paws = pawsOf(), running = c.pv > 3.4;
+  c.hold = Math.max(0, c.hold - dt); c.coolT = Math.max(0, c.coolT - dt); c.flee = Math.max(0, c.flee - dt);
+  const pick = (cx, cz, r) => { for (let i = 0; i < 8; i++) { const a = rnd(0, 6.283), q = rnd(1.2, r), x = cx + Math.sin(a) * q, z = cz + Math.cos(a) * q; if (catRange(x, z)) return { x, z }; } return null; };
+  if (c.hold > 0 || sheet) { stand(c, dt); face(c, P.x, P.z, dt); }
+  else if (paws === 0 && running && dP < 3.2 && c.flee <= 0) {                // shy: run at it and it trots away
+    const ux = (c.x - P.x) / Math.max(dP, 0.1), uz = (c.z - P.z) / Math.max(dP, 0.1);
+    c.goal = catRange(c.x + ux * 4, c.z + uz * 4) ? { x: c.x + ux * 4, z: c.z + uz * 4 } : pick(c.x, c.z, 4.5); c.flee = 1.6;
+  }
+  if (c.hold > 0 || sheet) { /* held still above */ }
+  else if (c.flee > 0 && c.goal) { if (step(c, c.goal.x, c.goal.z, 3.6, dt, false) < 0.15 || c.stuck > 0.5) { c.goal = null; c.flee = 0; c.wait = rnd(1.5, 3); } }
+  else if (paws >= 3 && c.coolT <= 0 && dP < 6.5 && dP > 1.25) {              // friendly: tags along for a while, then wanders off
+    step(c, P.x, P.z, Math.min(4.5, 1 + (dP - 1.1) * 2.6), dt, false); c.goal = null;
+    c.followT += dt; if (c.followT > 20) { c.followT = 0; c.coolT = 14; c.wait = 0.5; }
+  }
+  else if (paws >= 1 && paws < 3 && dP < 5 && dP > 1.35 && !running) { step(c, P.x, P.z, 1.3, dt, false); c.goal = null; }   // curious: comes over
+  else if (dP < 1.7 && !running) { stand(c, dt); face(c, P.x, P.z, dt); c.goal = null; }   // right beside you: waits to see what you've got
+  else {                                                                       // wandering
+    if (!c.goal) { stand(c, dt); c.wait -= dt; if (c.wait <= 0) { c.goal = pick(c.x, c.z, 4.5); if (!c.goal) c.wait = 1; } }
+    else if (step(c, c.goal.x, c.goal.z, 0.95, dt, false) < 0.12 || c.stuck > 0.7) { c.goal = null; c.stuck = 0; c.wait = rnd(2, 5.5); }
+  }
+  anim('cat', c.sp > 0.3 ? 'Walk' : 'Idle', dt, c.sp > 0.3 ? Math.min(3.2, Math.max(0.7, c.sp / 1.1)) : 1);
+  c.y = A.floorY(c.x, c.z); c.g.position.set(c.x, c.y, c.z); c.g.rotation.set(0, c.yaw, 0);
+}
+function catPoint(what) {
+  const t = tame(), c = strays.cat; if (!c) return;
+  const before = pawsOf(); t.pts++; c.hold = 2.4;
+  A.audio.play(what === 'pet' ? 'peep' : 'eggPop'); pop(what === 'pet' ? 'heart' : 'plus', c.x, c.y + 0.6, c.z);
+  if (pawsOf() > before) { A.audio.play('levelUp'); for (let i = 0; i < 4; i++) setTimeout(() => strays.cat && pop('heart', strays.cat.x + rnd(-0.3, 0.3), strays.cat.y + 0.6, strays.cat.z), i * 130); }
+  A.renderHotbar(); A.commit();
+  if (pawsOf() >= PETS.tame.paws) setTimeout(() => adopt('cat', false), 900);   // all paws: it's yours
+}
+function catGive() {
+  const t = tame(), id = catFood();
+  if (t.fed >= PETS.tame.treatsPerDay) { A.toast('The cat is full. Come back tomorrow'); return; }
+  if (!id) { A.toast('It wants a fish. Catch a common one, like a Silver Minnow'); return; }
+  A.addItem(id, -1); t.fed++; catPoint('give');
+}
+function catPet() { const t = tame(); if (t.pet >= PETS.tame.petsPerDay) return; t.pet++; catPoint('pet'); }
+
 function adopt(k, free) {
   const a = st(); if (pet(k)) return;
   if (k === 'dog' && !dogSrc) { A.toast('One moment: the puppy is still on its way'); return; }
-  const at = strayAt(k), p = { k, name: K[k].names[0], born: Date.now(), treats: 0, with: true };
+  if (k === 'cat' && !srcs.cat) return;
+  const at = strayAt(k), catYaw = k === 'cat' && strays.cat ? strays.cat.yaw : 0, p = { k, name: K[k].names[0], born: Date.now(), treats: 0, with: true };
   for (const q of a.list) q.with = false;                         // one follows at a time; the others head home
   a.list.push(p);
   A.addItem('decor_' + K[k].bed, 1); A.addItem('pet_treat', PETS.starter);
@@ -364,6 +442,7 @@ function adopt(k, free) {
   const R = free ? spawn(k) : spawn(k, at.x + (k === 'dog' ? 0.5 : 0), at.z);
   if (R && k === 'fish' && !free) { R.swim = true; R.y = A.WATER_Y + 0.4; A.addSplash(at.x, at.z); }
   if (R && k === 'dog') { R.yaw = 0.9; R.shot = { name: 'Jump_ToIdle', t: 1.2 }; }
+  if (R && k === 'cat') R.yaw = catYaw;
   A.audio.play('levelUp'); for (let i = 0; i < 3; i++) setTimeout(() => rt[k] && pop('heart', rt[k].x, anchorY(rt[k]) + 0.3, rt[k].z), i * 160);
   A.renderHotbar(); A.commit();
   openNaming(p, true);
@@ -374,6 +453,12 @@ export function pickUse() {
   if (!ready || A.busy() || sheet || card) return null;
   const P = A.player.pos;
   for (const k of ['dog', 'fish']) if (strays[k]) { const at = strayAt(k); if (Math.hypot(P.x - at.x, P.z - at.z) < (k === 'fish' ? 2.4 : 1.7)) return { kind: 'collect', key: 'petAdopt' + k, icon: 'heart', label: 'Adopt', go: () => adopt(k, false) }; }
+  if (strays.cat && Math.hypot(P.x - strays.cat.x, P.z - strays.cat.z) < 1.9) {   // the stray cat: Give (a treat or a common fish), then Pet once it's curious
+    const t = tame(), canGive = t.fed < PETS.tame.treatsPerDay, canPet = pawsOf() >= 1 && t.pet < PETS.tame.petsPerDay;
+    if (canGive && catFood()) return { kind: 'collect', key: 'catGive', icon: 'petfish', label: 'Give', go: catGive };
+    if (canPet) return { kind: 'collect', key: 'catPet', icon: 'hand', label: 'Pet', go: catPet };
+    if (canGive) return { kind: 'collect', key: 'catGive', icon: 'petfish', label: 'Give', go: catGive };
+  }
   for (const p of st().list) {
     const R = rt[p.k]; if (!R || !(R.inBowl || R.atHome)) continue;
     if (Math.hypot(P.x - R.x, P.z - R.z) > 1.5) continue;
@@ -410,13 +495,14 @@ function openRing(p) {
     if (a === 'pet') doPet(p); else if (a === 'treat') doTreat(p); else if (a === 'name') { closeRing(); openNaming(p, false); } else { closeRing(); openCard(p); } });
   A.audio.play('popOpen'); paintRing();
 }
-const treatsFor = (p) => A.invCount('pet_treat') + (K[p.k].worms ? A.invCount('worm') : 0);
+const fishCount = () => Object.keys(A.S.inv).reduce((n, id) => n + (ITEMS[id] && ITEMS[id].kind === 'fish' && ITEMS[id].rarity === 'common' ? A.S.inv[id] : 0), 0);
+const treatsFor = (p) => A.invCount('pet_treat') + (K[p.k].worms ? A.invCount('worm') : 0) + (K[p.k].fish ? fishCount() : 0);
 function paintRing() { if (!ring) return; ring.el.querySelector('.nt span').textContent = ring.p.name; const n = treatsFor(ring.p), i = ring.el.querySelector('.rb i'); i.textContent = n; i.dataset.none = n ? '' : '1'; }
 function closeRing() { if (ring) { ring.el.remove(); ring = null; } }
 function doPet(p) {
   const R = rt[p.k]; if (!R) return;
   if (p.k === 'fish') R.loop = 1; else R.shot = { name: 'Jump_ToIdle', t: 1.25 };   // the fish loops; the puppy does a happy hop
-  if (p.k === 'dog' && dogRig && dogRig.cur === 'Jump_ToIdle') dogRig.acts.Jump_ToIdle.reset().play();   // petted again mid-hop: hop again
+  if (p.k === 'dog' && rigs.dog && rigs.dog.cur === 'Jump_ToIdle') rigs.dog.acts.Jump_ToIdle.reset().play();   // petted again mid-hop: hop again
   A.audio.play('peep');
   for (let i = 0; i < 3; i++) setTimeout(() => rt[p.k] && pop('heart', R.x + rnd(-0.2, 0.2), anchorY(R) + 0.3, R.z), i * 140);
 }
@@ -424,8 +510,8 @@ function doTreat(p) {
   const a = st(), R = rt[p.k]; if (!R) return;
   if (a.day !== today()) { a.day = today(); for (const q of a.list) q.fed = 0; }
   if (!a.fast && (p.fed || 0) >= PETS.perDay) { A.toast(`${p.name} is full. More tomorrow`); if (p.k === 'fish') R.spin = 0.4; return; }
-  const id = A.invCount('pet_treat') > 0 ? 'pet_treat' : K[p.k].worms && A.invCount('worm') > 0 ? 'worm' : null;
-  if (!id) { A.toast(K[p.k].worms ? 'No treats. Worms work too; Nell sells pet treats' : 'No treats. Nell sells pet treats'); return; }
+  const id = A.invCount('pet_treat') > 0 ? 'pet_treat' : K[p.k].worms && A.invCount('worm') > 0 ? 'worm' : K[p.k].fish ? commonFish() : null;
+  if (!id) { A.toast(K[p.k].worms ? 'No treats. Worms work too; Nell sells pet treats' : K[p.k].fish ? 'No treats. A common fish works too' : 'No treats. Nell sells pet treats'); return; }
   const before = heartsOf(p);
   A.addItem(id, -1); p.treats++; p.fed = (p.fed || 0) + 1;
   if (p.k === 'fish') R.spin = 1; else { R.shot = { name: 'Eating', t: 1.8 }; }
@@ -490,6 +576,19 @@ function draw(size, fn) { const c = document.createElement('canvas'); c.width = 
 const _pics = {};
 function picture(kind) {
   if (_pics[kind]) return _pics[kind];
+  if (kind === 'cat') return (_pics.cat = draw(168, k => {          // the cat's face: dark grey, pink ears, white muzzle, green eyes
+    k.fillStyle = '#ffe3b8'; k.beginPath(); k.arc(84, 84, 84, 0, 6.3); k.fill();
+    k.lineWidth = 6; k.fillStyle = '#4b4b55';
+    for (const s of [-1, 1]) { k.beginPath(); k.moveTo(84 + s * 16, 54); k.lineTo(84 + s * 48, 20); k.lineTo(84 + s * 54, 72); k.closePath(); k.fill(); k.stroke(); }
+    k.fillStyle = '#f29bb2'; for (const s of [-1, 1]) { k.beginPath(); k.moveTo(84 + s * 30, 52); k.lineTo(84 + s * 44, 34); k.lineTo(84 + s * 47, 60); k.closePath(); k.fill(); }
+    k.fillStyle = '#4b4b55'; k.beginPath(); k.ellipse(84, 94, 52, 44, 0, 0, 6.3); k.fill(); k.stroke();
+    k.fillStyle = '#f4f1ea'; k.beginPath(); k.ellipse(84, 112, 26, 20, 0, 0, 6.3); k.fill();
+    k.fillStyle = '#9ad46a'; for (const s of [-1, 1]) { k.beginPath(); k.ellipse(84 + s * 22, 86, 10, 9, 0, 0, 6.3); k.fill(); }
+    k.fillStyle = '#2b2140'; for (const s of [-1, 1]) { k.beginPath(); k.ellipse(84 + s * 22, 86, 3.5, 8, 0, 0, 6.3); k.fill(); }
+    k.fillStyle = '#f29bb2'; k.beginPath(); k.moveTo(77, 102); k.lineTo(91, 102); k.lineTo(84, 110); k.closePath(); k.fill();
+    k.lineWidth = 3.5; k.beginPath(); k.moveTo(84, 110); k.lineTo(84, 116); k.moveTo(74, 118); k.quadraticCurveTo(84, 126, 94, 118); k.stroke();
+    k.lineWidth = 2.5; for (const s of [-1, 1]) for (const dy of [-5, 4]) { k.beginPath(); k.moveTo(84 + s * 30, 110 + dy * 0.4); k.lineTo(84 + s * 62, 108 + dy * 2); k.stroke(); }
+  }));
   return (_pics[kind] = kind === 'fish' ? draw(168, k => {
     k.fillStyle = '#bfe6f7'; k.beginPath(); k.arc(84, 84, 84, 0, 6.3); k.fill();
     k.lineWidth = 6; k.fillStyle = '#ffb35c'; k.beginPath(); k.moveTo(58, 86); k.lineTo(22, 58); k.lineTo(30, 86); k.lineTo(22, 116); k.closePath(); k.fill(); k.stroke();
@@ -539,13 +638,21 @@ function placeUI() {
     if (!R || quiet || ring.t > 7) closeRing();
     else { const s = project(R.x, anchorY(R), R.z), flip = s.x > innerWidth - 190, low = s.y < 170; ring.el.style.transform = `translate(${Math.round(s.x)}px, ${Math.round(s.y)}px)`; ring.el.dataset.flip = flip ? '1' : ''; ring.el.dataset.low = low ? '1' : ''; }
   }
-  for (const k of ['fish', 'dog']) {
+  for (const k of ['fish', 'dog', 'cat']) {
     const R = rt[k], z = R && R.doze && !quiet;
-    if (z) { const s = project(R.x, R.y + (k === 'fish' ? 0.42 : 0.6), R.z); ui.zzz[k].style.transform = `translate(${Math.round(s.x)}px, ${Math.round(s.y)}px) translate(-50%, -100%)`; }
+    if (z) { const s = project(R.x, R.y + (k === 'fish' ? 0.42 : k === 'cat' ? 0.5 : 0.6), R.z); ui.zzz[k].style.transform = `translate(${Math.round(s.x)}px, ${Math.round(s.y)}px) translate(-50%, -100%)`; }
     ui.zzz[k].hidden = !z;
-    const at = strays[k] ? strayAt(k) : null, h = at && !quiet && Math.hypot(A.player.pos.x - at.x, A.player.pos.z - at.z) < 12;
+    const at = strays[k] && k !== 'cat' ? strayAt(k) : null, h = at && !quiet && Math.hypot(A.player.pos.x - at.x, A.player.pos.z - at.z) < 12;
     if (h) { const s = project(at.x, k === 'fish' ? A.WATER_Y + 1.5 : A.floorY(at.x, at.z) + 1.25, at.z); ui.heart[k].style.transform = `translate(${Math.round(s.x)}px, ${Math.round(s.y)}px) translate(-50%, -100%)`; }
     ui.heart[k].hidden = !h;
+  }
+  { // the stray cat's paw tag (mockup A): five paws that fill in, shown when you're near it
+    const c = strays.cat, show = !!c && !quiet && Math.hypot(A.player.pos.x - c.x, A.player.pos.z - c.z) < 6.5;
+    if (show) {
+      const n = pawsOf(); if (ui.paws.dataset.n !== String(n)) { ui.paws.dataset.n = String(n); ui.paws.innerHTML = [0, 1, 2, 3, 4].map(i => `<svg width="18" height="18" viewBox="0 0 24 24" fill="${i < n ? '#b9733b' : '#e9e2d4'}" stroke="${i < n ? '#2b2140' : '#b9b1c6'}" stroke-width="1.6" aria-hidden="true">${A.ICON.paw}</svg>`).join(''); ui.paws.setAttribute('aria-label', `${n} of 5 paws`); }
+      const s = project(c.x, c.y + 0.72, c.z); ui.paws.style.transform = `translate(${Math.round(s.x)}px, ${Math.round(s.y)}px) translate(-50%, -100%)`;
+    }
+    ui.paws.hidden = !show;
   }
   if (ui.fps) ui.fps.textContent = Math.round(fpsAvg) + ' fps';
 }
@@ -561,6 +668,7 @@ function buildUI() {
 .petBub { background: #fff; border: 2px solid #2b2140; border-radius: 18px; box-shadow: 0 3px 0 rgba(43,33,64,.3); display: flex; align-items: center; justify-content: center; font-weight: 700; }
 .petHeart { width: 60px; height: 52px; animation: petBob 1.3s ease-in-out infinite; }
 .petZzz { padding: 2px 12px; height: 38px; gap: 3px; }
+.petPaws { padding: 3px 7px; gap: 2px; border-radius: 14px; border-width: 2.5px; }
 .petBub[hidden] { display: none; }
 @keyframes petBob { 50% { margin-top: -6px; } }
 #petRing { position: fixed; left: 0; top: 0; z-index: 9; width: 0; height: 0; font-family: Fredoka, system-ui, sans-serif; }
@@ -599,10 +707,10 @@ body.decorating #petTry, body.inward #petTry, body.decorating #petRing, body.inw
   document.head.appendChild(css);
   const layer = document.createElement('div'); layer.id = 'petLayer';
   const zz = '<span style="font-size:20px">Z</span><span style="font-size:15px">z</span><span style="font-size:11px">z</span>';
-  layer.innerHTML = ['fish', 'dog'].map(k => `<div data-h="${k}" class="petBub petHeart" hidden>${heartSVG(true, 30)}</div><div data-z="${k}" class="petBub petZzz" hidden aria-label="Sleeping">${zz}</div>`).join('');
+  layer.innerHTML = '<div class="petBub petPaws" hidden></div>' + ['fish', 'dog', 'cat'].map(k => `<div data-h="${k}" class="petBub petHeart" hidden>${heartSVG(true, 30)}</div><div data-z="${k}" class="petBub petZzz" hidden aria-label="Sleeping">${zz}</div>`).join('');
   document.body.appendChild(layer);
-  ui = { layer, heart: {}, zzz: {}, fps: null };
-  for (const k of ['fish', 'dog']) { ui.heart[k] = layer.querySelector(`[data-h="${k}"]`); ui.zzz[k] = layer.querySelector(`[data-z="${k}"]`); }
+  ui = { layer, heart: {}, zzz: {}, fps: null, paws: layer.querySelector('.petPaws') };
+  for (const k of ['fish', 'dog', 'cat']) { ui.heart[k] = layer.querySelector(`[data-h="${k}"]`); ui.zzz[k] = layer.querySelector(`[data-z="${k}"]`); }
   if (TRY) buildTry();
 }
 // TRY: the try-out panel. Not part of the game; goes away at the merge.
