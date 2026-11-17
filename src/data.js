@@ -1,7 +1,7 @@
 // Tidewell game data. Everything tunable lives here as plain tables so it can be
 // exported to JSON for the Unity version later (see tools/export-data.mjs).
 
-export const VERSION = '0.1.66';
+export const VERSION = '0.1.67';
 export const VERSION_LABEL = 'BETA v' + VERSION;
 
 // Rarity tiers (decision 36). `weight` is the base chance per bite with worms.
@@ -343,3 +343,18 @@ export const ANIMALS = {
   colors: ['#fffaf0', '#b9733b', '#e9b24c', '#5a5560', '#f3dcb4', '#d98f5a'],
   chickColor: '#ffd84d',
 };
+
+// ---------- the first ten goals (v0.1.67): one at a time, to teach a new player the game. How each is checked is in goals.js ----------
+// pic: an ICON name · prize: coins, or an item and how many · hint: shown when you tap the goal card
+export const GOALS = [
+  { id: 'hello',   title: 'Say hello to Higgins',                    pic: 'chat',   prize: { coins: 10 }, hint: 'Walk to Higgins by the dock and tap Talk.' },
+  { id: 'plant',   title: 'Till a plot and plant your turnip seeds', pic: 'seeds',  prize: { coins: 10 }, hint: 'Open Farm tools, drag the hoe over grass, then tap your seeds and Plant.' },
+  { id: 'water',   title: 'Water your turnips',                      pic: 'can',    prize: { coins: 10 }, hint: 'Open Farm tools, pick the watering can and drag it over your turnips.' },
+  { id: 'worms',   title: 'Take worms from the bucket by Fishel',    pic: 'worm',   prize: { item: 'worm', n: 5 }, hint: 'The bucket is beside Fishel\u2019s stall. Walk up and tap Take.' },
+  { id: 'catch',   title: 'Catch a fish',                            pic: 'fish',   prize: { coins: 20 }, hint: 'Take your rod to the dock, tap Cast, then tap Reel! when it bites.' },
+  { id: 'book',    title: 'Open your Fish Book',                     pic: 'book',   prize: { coins: 10 }, hint: 'Tap the menu button, then Fish Book.' },
+  { id: 'sell',    title: 'Sell your fish to Higgins',               pic: 'coin',   prize: { coins: 20 }, hint: 'Talk to Higgins and tap Sell everything.' },
+  { id: 'bench',   title: 'Place your bench',                        pic: 'bench',  prize: { item: 'decor_flowers', n: 2 }, hint: 'Tap the house button, pick the bench and tap Place.' },
+  { id: 'order',   title: 'Fill an order at the board',              pic: 'board',  prize: { coins: 30 }, hint: 'Bring what an order asks for to the board by Higgins and tap Fill.' },
+  { id: 'harvest', title: 'Harvest your turnips',                    pic: 'basket', prize: { item: 'seed_carrot', n: 5 }, hint: 'Turnips take about 20 minutes. When the bubble shows, tap Harvest.' },
+];

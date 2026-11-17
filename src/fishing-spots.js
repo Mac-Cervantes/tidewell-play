@@ -74,12 +74,14 @@ function bucketState() {
   return b;
 }
 export const bucketCount = () => bucketState().n;
+export const bucketPos = () => BUCKET;   // GOALS: where the worm goal points
 export const bucketGroup = () => bucket;   // tackle.js swaps the stand-in worms for the worm model
 export function takeBucket() {
   const b = bucketState(); if (b.n <= 0) return;
   const n = b.n; b.n = 0; b.at = Date.now();
   A.addItem('worm', n); A.audio.play('buy'); A.renderHotbar(); A.commit();
   A.toast(`+${n} worms from the bucket`);
+  if (A.goalEvent) A.goalEvent('worms');
 }
 // Fishel's free daily pack is gone (Mac, v0.1.61): the bucket by his stall is where free worms come from
 export const giftReady = () => false;

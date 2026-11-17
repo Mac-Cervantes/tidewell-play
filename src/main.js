@@ -15,6 +15,7 @@ import { weather } from './weather.js';   // rain lives in weather.js; hooks: in
 import * as animals from './animals.js';   // ANIMALS (try/chickens): coop, hens and eggs live in animals.js; hooks marked ANIMALS below
 import * as anim from './anim.js';   // ANIM (try/run): walk/run/idle live in anim.js; hooks marked ANIM below
 import * as spots from './fishing-spots.js';   // FISHING (try/fishing): the river, the lake and the bait rule; hooks marked FISHING below
+import * as goals from './goals.js';         // GOALS: the first ten goals (card, path, glow, hand); hooks marked GOALS
 import * as dex from './fishdex.js';            // FISHING: the fish book, hints and sightings
 import * as tackle from './tackle.js';          // TACKLE (try/fishing): rods, cast feels, jetty, dock steps; hooks marked TACKLE below
 
@@ -740,7 +741,7 @@ function closeWardrobe() {
   document.body.classList.remove('inward');
   for (const id of ['wardrobe', 'wardSwipe', 'wardHint']) document.getElementById(id).hidden = true;
   paintPlayer(); commit();
-  if (ward.first && !S.introDone && !settings.debug) setTimeout(runIntro, 500);
+  // GOALS (v0.1.67): Higgins's welcome no longer starts by itself; the first goal walks you over to him and Talk starts it
 }
 function tickWardrobe(dt) {
   ward.blend = Math.max(0, Math.min(1, ward.blend + (ward.on ? dt : -dt) / 0.5));
@@ -1370,7 +1371,7 @@ function harvest(p) {
   audio.play('harvest');
   const crop = CROPS[p.save.crop];
   const n = crop.yield[0] + (Math.random() < 0.45 ? crop.yield[1] - crop.yield[0] : 0);
-  addItem(crop.item, n); addXP(XP.crop * n);
+  addItem(crop.item, n); addXP(XP.crop * n); goals.event('harvest');   // GOALS
   p.save.crop = null; p.save.plantedAt = 0; p.save.emptySince = Date.now(); syncCrop(p);
   damageText(p.g.position.clone().setY(p.g.position.y + 1.0), '+' + n);
   toast(`Harvested ${n} ${crop.name.toLowerCase()}${n > 1 ? 's' : ''}`);
@@ -1672,7 +1673,7 @@ function farmApply(c, k) {
     if (!p || !p.grown) return false;
     const crop = CROPS[p.save.crop], plantedAt = p.save.plantedAt, cropId = p.save.crop;
     const n = crop.yield[0] + (Math.random() < 0.45 ? crop.yield[1] - crop.yield[0] : 0);
-    addItem(crop.item, n); addXP(XP.crop * n); p.save.crop = null; p.save.plantedAt = 0; p.save.watered = null; p.save.emptySince = Date.now(); syncCrop(p);
+    addItem(crop.item, n); addXP(XP.crop * n); goals.event('harvest'); p.save.crop = null; p.save.plantedAt = 0; p.save.watered = null; p.save.emptySince = Date.now(); syncCrop(p);
     damageText(p.g.position.clone().setY(p.g.position.y + 0.9), '+' + n);
     history.push({ kind: 'harvest', key: k, n, plantedAt, crop: cropId });
     farm.got += n; farm.n++; buzz(); audio.play('harvest'); renderHotbar(); return true;
@@ -2550,7 +2551,7 @@ function sellAll() {
   const v = sellValue();
   for (const id of Object.keys(S.inv)) { const it = ITEMS[id]; if (it && (it.kind === 'fish' || it.kind === 'crop')) delete S.inv[id]; }
   S.coins += v.total; audio.play('coins'); renderHotbar(); commit();
-  toast(`+${v.total} coins`);
+  toast(`+${v.total} coins`); goals.event('sell');   // GOALS
   talkMenu(`A pleasure doing business. That comes to ${v.total} coins.`);
 }
 function seedMenu(msg) {
@@ -2570,6 +2571,7 @@ function buySeeds(sd) {
   seedMenu(`Splendid. Five ${ITEMS[ITEMS[sd].crop].name.toLowerCase()} seeds, and they\u2019re in your seed bag.`);
 }
 function startTalk() {
+  goals.event('talk');   // GOALS
   if (!S.introDone) runIntro();
   else if (!S.kitGiven) sayLines(['Ah, before I forget! Your housewarming kit: a bench, lanterns, fences, flowers, a barrel and a crate.', 'Tap the house button on your toolbar to place them wherever you like. And do visit Fishel by the dock for bait.'], () => { giveStarterKit(); toast('Starter decor added to your bag'); talkMenu(); });
   else talkMenu();
@@ -3277,7 +3279,7 @@ document.getElementById('ordList').addEventListener('click', (e) => {
   if (b.dataset.ofill) {
     const o = S.orders.slots.find(x => x.id === +b.dataset.ofill); if (!o || !orderReady(o) || !ordAtBoard) return;
     for (const [id, n] of o.items) addItem(id, -n);
-    S.coins += o.coins; audio.play('coins'); addXP(XP.order);
+    S.coins += o.coins; audio.play('coins'); addXP(XP.order); goals.event('order');   // GOALS
     let msg = `+${o.coins} coins \u00b7 +${XP.order} XP`;
     if (o.extra.kind === 'heart') { S.friends[o.who] = (S.friends[o.who] || 0) + 1; msg += ` \u00b7 ${ORDER_FOLK[o.who].name} \u2665+1`; }
     else { addItem(o.extra.item, o.extra.n); msg += ` \u00b7 +${o.extra.n} ${ITEMS[o.extra.item].name}`; }
@@ -3414,6 +3416,8 @@ document.querySelectorAll('[data-dbg]').forEach(b => b.addEventListener('click',
   }
   if (k === 'grass') { let n = 0; for (const p of plots.values()) if (!p.save.crop) { p.save.emptySince = 1; n++; } grassCheck = 0; toast(n ? `${n} empty plot${n > 1 ? 's' : ''} going back to grass` : 'No empty plots'); }
   if (k === 'xp') { addXP(100); toast('+100 XP'); }
+  if (k === 'goals0') goals.debug('restart');   // GOALS
+  if (k === 'goalsSkip') goals.debug('skip');
   if (k === 'lot') {
     const l = LOTS.find(lotForSale);
     if (!l) toast('Every lot is bought');
@@ -3658,6 +3662,7 @@ function update(dt) {
   if (toastT > 0) { toastT -= dt; if (toastT <= 0) toastEl.hidden = true; }
   if (catchT > 0) { catchT -= dt; if (catchT <= 0) hideCatch(); }
   tickLevelUp();
+  goals.frame(dt);   // GOALS
   gateToastT -= dt;
   updateHiggins(dt);
   updateFishel(dt); updatePike(dt);
@@ -3757,12 +3762,17 @@ function frame() {
     exposure: () => TOD[todKey].exp,
     snapCamera: () => { camFocus.set(camClampX(player.pos.x), player.y || 0, player.pos.z); } });
   // ANIMALS: everything animals.js borrows from this file (before saved decor is put back: the coop is decor)
+  goals.init({ THREE, scene, camera, player, get S() { return S; }, commit, addItem, toast, audio, svg, renderHotbar, floorY, fishing, DOCK, BOARD,   // GOALS
+    npc: (k) => ({ higgins, fishel, rosa, pike })[k], bucketPos: spots.bucketPos, bucketCount: spots.bucketCount,
+    dlgOpen: () => dlg.open, sheetOpen: () => [...document.querySelectorAll('.sheet')].some(x => !x.hidden), wardOn: () => ward.on,
+    titleOn: () => document.body.classList.contains('inmenu'), playing: () => !decor.on && farm.mode === 'off' && catchT <= 0,
+    busy: () => busyForLevelCard() || decor.on || !document.getElementById('levelUp').hidden || document.body.classList.contains('inmenu') });
   animals.init({ THREE, scene, camera, M, SCALE, groundY, player, get S() { return S; }, settings, ICON, cropIcon, plots, commit, addItem, invCount, addXP, toast, audio, svg, renderHotbar, currentTOD,
     respawnDecor: (rec) => { despawnDecor(rec); spawnDecor(rec); }, fenceZ: () => FENCE_Z, wet: (x, z) => spots.onBank(x, z), busy: () => decor.on || farm.mode !== 'off' || fishing.state !== 'idle' || ward.on || dlg.open });
   // FISHING: everything the fishing files borrow from this file, in one place
   { const _fp = new THREE.Vector3(); let sheets = null;
     const anySheet = () => { sheets = sheets || [...document.querySelectorAll('.sheet')]; return sheets.some(x => !x.hidden); };
-    const fishApi = { THREE, scene, camera, M, place, groundY, WATER_Y, waterMat, player, townFence, ICON, svg, toast, commit, addItem, addXP, audio, renderHotbar, openSheet, ensureFish, addSplash, fishIcon, todayKey,
+    const fishApi = { goalEvent: (n) => goals.event(n), THREE, scene, camera, M, place, groundY, WATER_Y, waterMat, player, townFence, ICON, svg, toast, commit, addItem, addXP, audio, renderHotbar, openSheet, ensureFish, addSplash, fishIcon, todayKey,
       get S() { return S; }, debug: () => settings.debug, cloneFish: (n) => SkeletonUtils.clone(M.fish[n].scene),
       project: (x, y, z) => { _fp.set(x, y, z).project(camera); return { x: (_fp.x + 1) / 2 * innerWidth, y: (1 - _fp.y) / 2 * innerHeight, z: _fp.z }; },
       waterAt: (nx, ny) => { _fp.set(nx, ny, 0.5).unproject(camera).sub(camera.position).normalize(); if (_fp.y > -0.05) return null; const t = (WATER_Y - camera.position.y) / _fp.y; return { x: camera.position.x + _fp.x * t, z: camera.position.z + _fp.z * t }; },
