@@ -17,24 +17,41 @@ const isOn = (el) => !!el && el.classList.contains('on');
 const total = (S) => Object.values(S.caught || {}).reduce((a, b) => a + b, 0);
 const npcAt = (k) => { const n = A.npc(k); return n ? { x: n.pos.x, z: n.pos.z, npc: n, h: 2.45 } : null; };
 
+// Every goal holds your hand through each step until it's done (Mac, v0.1.69).
 // on: a main.js event finishes it · poll: checked every frame · use: action-button labels to light up
-// ui: a button to point at · at: a spot in the world to lead to · start: remember where things stood
+// ui: the next button to press, or { drag: spot } to show "drag here" · at: a spot in the world to lead to
+const plotAt = (p) => ({ x: p.x + 0.5, z: p.z + 0.5, ring: true, h: 1.2 });
+const farmTile = (id) => document.querySelector(`#farmTray [data-farm="${id}"]`);
+function farmStep(id, spot) {   // Farm tools → the right tool → drag it over the spot
+  const m = A.farm.mode;
+  if (m === 'off') return slot(1);
+  if (m === 'tray' || (m === 'ready' && A.farmPicked() !== id)) return farmTile(id);
+  if (m === 'ready') return { drag: spot() };
+  return null;   // dragging or floating back
+}
+const tillStep = () => farmStep('hoe', () => ({ x: A.player.pos.x, z: A.player.pos.z + 1.3 }));
+const seedStep = () => isOn(slot(2)) ? null : slot(2);
 const RULES = {
   hello:   { on: 'talk', use: ['Talk'], at: () => npcAt('higgins') },
-  plant:   { poll: (S) => S.plots.some(p => p.crop), use: ['Plant'], ui: (S) => S.plots.length ? (isOn(slot(2)) ? null : slot(2)) : (isOn(slot(1)) ? null : slot(1)) },
-  water:   { poll: (S) => S.plots.some(p => p.crop && p.watered != null), ui: () => isOn(slot(1)) ? null : slot(1) },
+  plant:   { poll: (S) => S.plots.some(p => p.crop), use: ['Plant'],
+             ui: (S) => S.plots.length ? seedStep() : tillStep(),
+             at: (S) => { const p = S.plots.find(q => !q.crop); return p ? plotAt(p) : null; } },
+  water:   { poll: (S) => S.plots.some(p => p.crop && p.watered != null),
+             ui: (S) => { const p = S.plots.find(q => q.crop); return p ? farmStep('can', () => plotAt(p)) : S.plots.length ? seedStep() : tillStep(); } },
   worms:   { on: 'worms', use: ['Take'], at: () => ({ ...A.bucketPos(), ring: true, h: 1.1 }), skip: () => A.bucketCount() <= 0 },
   catch:   { start: (S, g) => { g.base = total(S); }, poll: (S, g) => total(S) > (g.base || 0), use: ['Cast', 'Reel!'],
              ui: () => isOn(slot(0)) ? null : slot(0),
              at: () => A.fishing.state === 'idle' ? { x: A.DOCK.x - 0.45, z: -6.5, via: [{ x: A.DOCK.x, z: -3.4 }], ring: true, h: 1.3 } : null },
-  book:    { poll: () => vis('fishBook'), menu: true, ui: () => vis('menu') ? byId('menuFish') : byId('menuBtn') },
-  sell:    { on: 'sell', use: ['Talk'], at: () => npcAt('higgins'), dialog: true,
+  book:    { poll: () => vis('fishBook'), ui: () => vis('menu') ? byId('menuFish') : byId('menuBtn') },
+  sell:    { on: 'sell', use: ['Talk'], at: () => npcAt('higgins'),
              ui: () => A.dlgOpen() ? [...document.querySelectorAll('#dChoices button')].find(b => /^Sell/.test(b.textContent)) || null : null },
-  bench:   { poll: (S) => S.decor.length > 0, ui: () => isOn(slot(4)) ? null : slot(4) },
-  order:   { on: 'order', use: ['Orders'], at: () => ({ x: A.BOARD.x, z: A.BOARD.z + 0.9, ring: true, h: 2.3 }) },
+  bench:   { poll: (S) => S.decor.length > 0,
+             ui: () => !vis('decorTray') ? slot(4) : vis('decorCtl') ? byId('dPlace') : document.querySelector('#decorTray [data-decor="bench"]') || document.querySelector('#decorTray [data-decor]') },
+  order:   { on: 'order', use: ['Orders'], at: () => ({ x: A.BOARD.x, z: A.BOARD.z + 0.9, ring: true, h: 2.3 }),
+             ui: () => vis('orders') ? document.querySelector('#orders [data-ofill]:not([disabled])') : null },
   harvest: { on: 'harvest', use: ['Harvest', 'Plant'],
-             ui: (S) => S.plots.some(q => q.crop) ? null : S.plots.length ? (isOn(slot(2)) ? null : slot(2)) : (isOn(slot(1)) ? null : slot(1)),   // nothing growing: point back at planting
-             at: (S) => { const p = S.plots.find(q => q.crop); return p ? { x: p.x + 0.5, z: p.z + 0.5, ring: true, h: 1.2 } : null; } },
+             ui: (S) => S.plots.some(q => q.crop) ? null : S.plots.length ? seedStep() : tillStep(),   // nothing growing: back to planting
+             at: (S) => { const p = S.plots.find(q => q.crop) || S.plots[0]; return p ? plotAt(p) : null; } },
 };
 
 function state() {
@@ -146,16 +163,16 @@ function guide(dt, r) {
   time += dt;
   const S = A.S, bob = Math.sin(time * 5) * 5;
   if (!doneEl.hidden || A.titleOn() || A.wardOn()) { hideAll(); return; }
-  let el = null, at = null;
-  const u = r.ui ? r.ui(S) : null;
-  if (A.dlgOpen()) el = r.dialog ? u : null;
-  else if (A.sheetOpen()) el = r.menu && vis('menu') ? u : null;
-  else if (!A.playing()) el = null;
+  let u = r.ui ? r.ui(S) : null, el = null, drag = null, at = null;
+  if (u && u.drag) { drag = u.drag; u = null; }
+  if (u && !u.getClientRects().length) u = null;   // a button that isn't on screen right now
+  if (A.dlgOpen() || A.sheetOpen()) { el = u && u.closest(A.dlgOpen() ? '#dialog' : '.sheet') ? u : null; drag = null; }   // in a menu: only a button in that menu
+  else if (!A.playing()) { u = null; drag = null; }
   else {
     const use = byId('useBtn');
-    if (r.use && !use.hidden && r.use.includes(byId('useLabel').textContent)) el = use;
+    if (r.use && !use.hidden && r.use.includes(byId('useLabel').textContent)) { el = use; drag = null; }
     else if (u) el = u;
-    else at = r.at ? r.at(S) : null;
+    else if (!drag) at = r.at ? r.at(S) : null;
   }
   setGlow(el);
   if (el) {
@@ -164,6 +181,11 @@ function guide(dt, r) {
     if (b.top > 120) place(hand, b.left + b.width / 2 - 32, b.top - 52 + bob, 90);       // above, pointing down
     else place(hand, b.left + b.width / 2 - 32, b.bottom + 4 - bob, -90);                 // below, pointing up
     return;
+  }
+  if (drag) {   // "drag your tool here": a ring on the ground and the hand sweeping side to side over it
+    hull(null); for (const d of dots) d.visible = false; arrow.hidden = true;
+    const dy = A.floorY(drag.x, drag.z); ring.visible = true; ring.position.set(drag.x, dy + 0.06, drag.z); ring.scale.setScalar(1 + 0.12 * Math.sin(time * 4));
+    const q = screen(drag.x, dy + 0.5, drag.z); place(hand, q.x - 32 + Math.sin(time * 3) * 46, q.y - 44, 90); return;
   }
   if (!at) { hand.hidden = true; arrow.hidden = true; hideWorld(); return; }
   const gy = A.floorY(at.x, at.z);
@@ -214,6 +236,7 @@ export function init(api) {
 const CSS = `
 #goalCard { display: flex; flex-direction: column; align-items: stretch; gap: 4px; width: 178px; padding: 7px 10px; text-align: left; white-space: normal !important; font: inherit; color: #2b2140; cursor: pointer; pointer-events: auto; }
 #goalCard[hidden] { display: none; }
+body:has(#decorTray:not([hidden])) #goalCard { display: none; }   /* the decorating banner sits there */
 #goalCard .gtop { display: flex; align-items: flex-start; gap: 6px; font-size: 15px; line-height: 1.15; } #goalCard .gtop svg { flex: none; }
 #goalCard .gmid { display: flex; align-items: center; gap: 7px; } #goalCard .gmid b { font-size: 16px; }
 #goalCard .gbar { flex: 1; height: 11px; border-radius: 7px; border: 2px solid #2b2140; background: #efe8d8; box-sizing: border-box; }

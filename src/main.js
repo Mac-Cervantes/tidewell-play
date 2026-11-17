@@ -3778,7 +3778,7 @@ function frame() {
   goals.init({ THREE, scene, camera, player, get S() { return S; }, commit, addItem, toast, audio, svg, renderHotbar, floorY, fishing, DOCK, BOARD,   // GOALS
     npc: (k) => ({ higgins, fishel, rosa, pike })[k], bucketPos: spots.bucketPos, bucketCount: spots.bucketCount,
     dlgOpen: () => dlg.open, sheetOpen: () => [...document.querySelectorAll('.sheet')].some(x => !x.hidden), wardOn: () => ward.on,
-    titleOn: () => document.body.classList.contains('inmenu'), playing: () => !decor.on && farm.mode === 'off' && catchT <= 0,
+    titleOn: () => document.body.classList.contains('inmenu'), playing: () => catchT <= 0, farm, farmPicked: () => farmPicked(),
     busy: () => busyForLevelCard() || decor.on || !document.getElementById('levelUp').hidden || document.body.classList.contains('inmenu') });
   animals.init({ THREE, scene, camera, M, SCALE, groundY, player, get S() { return S; }, settings, ICON, cropIcon, plots, commit, addItem, invCount, addXP, toast, audio, svg, renderHotbar, currentTOD,
     respawnDecor: (rec) => { despawnDecor(rec); spawnDecor(rec); }, fenceZ: () => FENCE_Z, wet: (x, z) => spots.onBank(x, z), busy: () => decor.on || farm.mode !== 'off' || fishing.state !== 'idle' || ward.on || dlg.open });
