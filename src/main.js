@@ -1596,7 +1596,8 @@ function renderFarmTray() {
   const show = (farm.mode === 'tray' || farm.mode === 'ready') && !decor.on;
   farmTray.hidden = !show; if (!show) return;
   const sel = farm.mode === 'ready' ? farmPicked() : null;   // highlighted = the tool in your hands
-  farmTray.querySelector('.srow').innerHTML = FARM_ORDER.map(id => { const t = FARM_TOOLS[id];
+  // tools you don't own yet stay out of the tray; it fills up as you buy them (Mac, v0.1.70)
+  farmTray.querySelector('.srow').innerHTML = FARM_ORDER.filter(id => !(FARM_TOOLS[id].gear && !hasTool(id))).map(id => { const t = FARM_TOOLS[id];
     const locked = t.gear && !hasTool(id), tag = locked ? `<span class="slock">${svg('lock', '#fff', 10)}${GEAR[id].price}</span>` : '';
     return `<button class="schip${id === sel ? ' on' : ''}${locked ? ' locked' : ''}" data-farm="${id}" aria-pressed="${id === sel}" aria-label="${t.name}: ${t.sub}">${tag}${svg(t.icon, '#2b2140', 26)}<span class="sn">${t.short || t.name}</span><span class="st">${t.sub}</span></button>`; }).join('');
 }
