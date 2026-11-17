@@ -474,10 +474,11 @@ function buildWorld() {
   townFence.push(place('town', 'banner-red', -1.6, FZ - 0.2, { s: 0.6 }), place('town', 'banner-red', 1.6, FZ - 0.2, { s: 0.6 }));
 
   // nature dressing around town
+  const nearWater = (x, z, m = 1.1) => [[0, 0], [m, 0], [-m, 0], [0, m], [0, -m]].some(([a, b]) => spots.onBank(x + a, z + b));
   const T = (n, x, z, s = 1, r = rnd() * 6.28) => place('nature', n, x, z, { s, r });
   [['tree_oak', -12, 0.5], ['tree_default', 10.6, 3.4], ['tree_detailed', 11.8, -0.4], ['tree_oak', -12.5, 5.6],
    ['tree_default', 13.4, 5.8], ['tree_detailed', -10.8, -1.8], ['tree_pineRoundA', 14.5, 1.2], ['tree_oak', 9.4, 6.2]]
-    .forEach(([n, x, z]) => T(n, spots.onBank(x, z) ? spots.innerBank(z) + 0.5 : x, z, 1.15 + rnd() * 0.2));   // FISHING: never in the river
+    .forEach(([n, x, z]) => { const sc = 1.15 + rnd() * 0.2; if (nearWater(x, z)) { rnd(); return; } T(n, x, z, sc); });   // never in the river: the two oaks that sat on its bank, leaning over the water, are gone (Mac, v0.1.77)
   const flowers = ['flower_redA', 'flower_yellowA', 'flower_purpleA'];
   for (const [cx, cz] of [[3.6, 5.6], [5.8, 1.6], [7.2, 1.4], [-5.5, 4.4], [1.8, 1.2], [-1.6, 6.6], [6.0, 5.8]]) {
     for (let k = 0; k < 5; k++) wildPlant(T(flowers[(((k + Math.round(cx)) % 3) + 3) % 3], cx + (rnd() - 0.5) * 1.2, cz + (rnd() - 0.5) * 0.8, 1.1));
@@ -490,25 +491,28 @@ function buildWorld() {
   refreshDig();
 
   // --- the wilds past the gate ---
+  // no trees in or right beside the river and the lake (Mac, v0.1.77: "trees in the water look odd"); a skipped tree still uses up its random numbers so the rest of the woods stay where they were
+  const dryTree = (n, x, z, sc) => { if (nearWater(x, z)) { rnd(); return; } occluder(T(n, x, z, sc)); };
   const wildTrees = [];
   for (let i = 0; i < 40; i++) {
     const x = (rnd() - 0.5) * 34, z = LOTS_BACK + 1.2 + rnd() * 16;
     if (Math.abs(x) < 2.6) continue;
     wildTrees.push([x, z]);
   }
-  wildTrees.forEach(([x, z], i) => occluder(T(i % 3 === 0 ? 'tree_oak_dark' : 'tree_default_dark', x, z, 1.1 + rnd() * 0.5)));
+  wildTrees.forEach(([x, z], i) => dryTree(i % 3 === 0 ? 'tree_oak_dark' : 'tree_default_dark', x, z, 1.1 + rnd() * 0.5));
   for (let i = 0; i < 26; i++) {   // woods down both sides of the lots
     const sd = rnd() > 0.5 ? 1 : -1;
-    occluder(T(rnd() > 0.4 ? 'tree_default_dark' : 'tree_oak_dark', sd * (15.8 + (sd < 0 ? 1.3 : 0) + rnd() * 6)   /* FISHING: the left woods start behind the river */, FENCE_Z0 + 0.6 + rnd() * (LOTS_BACK - FENCE_Z0), 1.1 + rnd() * 0.5));
+    dryTree(rnd() > 0.4 ? 'tree_default_dark' : 'tree_oak_dark', sd * (15.8 + (sd < 0 ? 1.3 : 0) + rnd() * 6)   /* FISHING: the left woods start behind the river */, FENCE_Z0 + 0.6 + rnd() * (LOTS_BACK - FENCE_Z0), 1.1 + rnd() * 0.5);
   }
   for (let i = 0; i < 34; i++) {
     const x = (rnd() - 0.5) * 20, z = LOTS_BACK + 0.8 + rnd() * 9;
     if (Math.abs(x) < 1.4) continue;
     const pick = ['grass_large', 'mushroom_redGroup', 'grass_large', 'stump_round', 'plant_bush', 'grass_large', 'log', 'mushroom_redGroup'][i % 8];
+    if (spots.onBank(x, z)) { rnd(); continue; }
     T(pick, x, z, pick === 'grass_large' ? 1.6 : 1.2);
   }
   for (const [x, z] of [[-5.6, 10.4], [5.9, 12.6], [-6.4, 14.2], [6.8, 9.6], [-4.8, 16.4], [5.2, 16.8]].map(([a, b]) => [a, b + LOTS_BACK - 7.6]))
-    occluder(T(rnd() > 0.5 ? 'tree_oak_dark' : 'tree_default_dark', x, z, 1.25 + rnd() * 0.3));
+    dryTree(rnd() > 0.5 ? 'tree_oak_dark' : 'tree_default_dark', x, z, 1.25 + rnd() * 0.3);
 }
 
 // ---------- mannequin bodies on the shared skeleton ----------
