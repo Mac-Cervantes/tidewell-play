@@ -156,7 +156,9 @@ function buildRig(k) {
   s.position.set(-c.x, -box.min.y, -c.z); w.add(s); w.scale.setScalar(K[k].length / Math.max(sz.x, sz.z));
   const mx = new THREE.AnimationMixer(s), acts = {};
   for (const a of src.animations) acts[a.name.split('|').pop()] = mx.clipAction(a);
-  return (rigs[k] = { w, s, baseY: s.position.y, mx, acts, cur: '' });
+  let blob = null;
+  if (k === 'cat') { blob = buildBlob(); blob.material.opacity = 0.3; const u = 1 / w.scale.x; blob.scale.set(0.62 * u, 1.05 * u, 1); blob.position.y = 0.025 * u; blob.renderOrder = 1; w.add(blob); }   // soft dark patch right under the cat, so it reads as sitting on the grass (the sun's shadow alone lands a little away from it)
+  return (rigs[k] = { w, s, blob, baseY: s.position.y, mx, acts, cur: '' });
 }
 const buildDog = () => buildRig('dog');
 // blend to a clip; the puppy's 'Death' is borrowed as its lying-down pose (no sleep clip in the pack): it starts near its end and holds there
@@ -176,7 +178,7 @@ const dogAnim = (name, dt, speed) => anim('dog', name, dt, speed);
 // loaves are gone, Mac: "those don't make physical sense".) The pack has no sitting clip, so it's posed in code on top of the idle:
 // the legs tuck up into the body, the body settles, shortens a little and tips its chest up, and the tail is laid along the hip.
 const LOAF = { legs: ['Bone014', 'Bone017', 'Bone008', 'Bone011'], tailBones: ['Bone004', 'Bone005', 'Bone006', 'Bone007'],
-  tuck: 0.05, drop: 0.98, squash: [0.82, 1.08], pitch: -0.08,
+  tuck: 0.05, drop: 0.98, neck: 0.55, head: -0.48, squash: [0.82, 1.08], pitch: -0.08,
   tail: [[0.7, -0.8, -0.1], [0.55, -0.3, 0.8], [0.1, -0.05, 1], [-0.3, 0, 1]] };   // each tail piece's direction: x = the cat's side, y = up, z = its nose
 function catPose(rig, k) {
   if (!rig || rig.noPose) return;
@@ -193,7 +195,13 @@ function catPose(rig, k) {
   rig.s.position.y = rig.baseY - rig.leg * L.drop * k;
   rig.s.scale.set(1 + (L.squash[0] - 1) * k, 1 + (L.squash[1] - 1) * k, 1);   // the model's own x is its nose-to-tail line
   rig.w.rotation.x = L.pitch * k;
+  if (rig.blob) rig.blob.rotation.x = -Math.PI / 2 - L.pitch * k;
   if (k <= 0.001) return;
+  if (b.Bone002 && b.Bone003) {   // sphinx neck: chest bone tips up, head tips back down to level (the walk/idle clip resets these every frame)
+    rig.e = rig.e || new THREE.Euler();
+    rig.e.set(L.neck * k, 0, 0); b.Bone002.quaternion.multiply(rig.q.setFromEuler(rig.e));
+    rig.e.set(L.head * k, 0, 0); b.Bone003.quaternion.multiply(rig.q.setFromEuler(rig.e));
+  }
   rig.w.updateWorldMatrix(true, true); rig.w.getWorldQuaternion(rig.wq);
   L.tailBones.forEach((n, i) => {
     const bone = b[n]; rig.v.set(L.tail[i][0], L.tail[i][1], L.tail[i][2]).normalize().applyQuaternion(rig.wq);
