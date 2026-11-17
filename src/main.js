@@ -13,6 +13,7 @@ import { loadSave, storeSave, resetSave, peekSave, loadSettings, storeSettings, 
 import { audio } from './audio.js';   // all sound lives in audio.js; the calls below are one-line hooks
 import { weather } from './weather.js';   // rain lives in weather.js; hooks: initWeather(), weather.frame(), renderWx()
 import * as animals from './animals.js';   // ANIMALS (try/chickens): coop, hens and eggs live in animals.js; hooks marked ANIMALS below
+import * as pets from './pets.js';   // PETS (try/pets): the companion that follows you lives in pets.js; hooks marked PETS below
 import * as anim from './anim.js';   // ANIM (try/run): walk/run/idle live in anim.js; hooks marked ANIM below
 import * as spots from './fishing-spots.js';   // FISHING (try/fishing): the river, the lake and the bait rule; hooks marked FISHING below
 import * as goals from './goals.js';         // GOALS: the first ten goals (card, path, glow, hand); hooks marked GOALS
@@ -355,6 +356,17 @@ function onDock(x, z) { return Math.abs(x - DOCK.x) < DOCK.half && z <= DOCK.zNe
 const FENCE_Z0 = 7.55;
 let FENCE_Z = FENCE_Z0;
 const townFence = [];   // fence pieces and gate banners, moved together
+// PETS: is this spot inside something a pet shouldn't pass through (people, stalls, the board, the store, the coop)?
+const _ps = { a: null, b: null };
+function petSolid(x, z) {
+  for (const n of [higgins, fishel, pike, rosa]) if (n && n.pos && Math.hypot(x - n.pos.x, z - n.pos.z) < 0.6) return true;
+  if (Math.abs(x - FISHEL_STALL.x) < 1.3 && Math.abs(z - FISHEL_STALL.z) < 1.05) return true;
+  if (rosa) { const c = Math.cos(ROSA_CART.r), sn = Math.sin(ROSA_CART.r), dx = x - ROSA_CART.x, dz = z - ROSA_CART.z; if (Math.abs(dx * c - dz * sn) < 1.0 && Math.abs(dx * sn + dz * c) < 1.5) return true; }
+  if (Math.abs(x - BOARD.x) < 0.85 && Math.abs(z - BOARD.z) < 0.35) return true;
+  _ps.a = _ps.a || new THREE.Vector3(); _ps.b = _ps.b || new THREE.Vector3();
+  for (const blk of [store.block, animals.block]) { _ps.a.set(x, 0, z); _ps.b.set(x + 9, 0, z - 9);   /* a 'from' point that can never lean on the store's door */ blk(_ps.a, _ps.b); if (_ps.a.x !== x || _ps.a.z !== z) return true; }
+  return false;
+}
 function walkable(x, z) { return (z >= -3.4 || onDock(x, z)) && (!spots.isWet(x, z) || tackle.onDeck(x, z)) &&   /* FISHING: no walking into the river or lake; TACKLE: except on the jetty */ !(inRock(x, z) && !inRock(player.pos.x, player.pos.z)); }
 function inRock(x, z) { for (const o of solids) if (o.visible && Math.hypot(o.position.x - x, o.position.z - z) < o.userData.solidR) return true; return false; }
 // The Kenney dock section has 3 planks between its side rails. Rebuild its mesh 4 planks wide:
@@ -940,7 +952,7 @@ const endJoy = (e) => {
   const quick = !joy.far && !wasAim && e.timeStamp - joy.t0 < 300;
   joy.id = null; joy.dx = joy.dy = 0; joyBase.hidden = true;
   if (wasAim) endAim(e.type === 'pointerup');
-  else if (quick && e.type === 'pointerup') { if (decor.on) decorTap(e.clientX, e.clientY); else if (!animals.tap(e.clientX, e.clientY)) handleTap(e.clientX, e.clientY); }   // ANIMALS: a tap on the coop or pond opens its card
+  else if (quick && e.type === 'pointerup') { if (decor.on) decorTap(e.clientX, e.clientY); else if (!pets.tap(e.clientX, e.clientY) && !animals.tap(e.clientX, e.clientY)) handleTap(e.clientX, e.clientY); }   /* PETS: a tap on your pet opens its buttons */   // ANIMALS: a tap on the coop or pond opens its card
 };
 canvas.addEventListener('pointerup', endJoy); canvas.addEventListener('pointercancel', endJoy);
 document.addEventListener('gesturestart', e => e.preventDefault());
@@ -1151,7 +1163,7 @@ function updateFishing(dt) {
   switch (F.state) {
     case 'idle': F.a = 0.75 + Math.sin(elapsed * 1.6) * 0.03; break;
     case 'flick': F.a = 1.9 + (0.15 - 1.9) * e(F.t / 0.13); if (F.t > 0.13) { worldRodTip.getWorldPosition(F.from); setFish('flight'); } break;
-    case 'flight': F.a = 0.15; if (F.t > tackle.castShape(F.place, F.dist).dur) { addSplash(F.land.x, F.land.z); if (tackle.castKind(F.place) === 'zip') setTimeout(() => addSplash(F.land.x, F.land.z), 110); audio.play(tackle.landSound(F.place));   /* TACKLE: flight time, splash and sound by cast feel */ const bw = BAIT[F.bait || 'worm'].bite; F.wait = settings.debug && settings.instantBite ? DEBUG.biteSeconds : (bw[0] + Math.random() * (bw[1] - bw[0])) * tackle.perks(F.place).bite /* TACKLE: faster rods */; setFish('wait'); } break;
+    case 'flight': F.a = 0.15; if (F.t > tackle.castShape(F.place, F.dist).dur) { addSplash(F.land.x, F.land.z); if (tackle.castKind(F.place) === 'zip') setTimeout(() => addSplash(F.land.x, F.land.z), 110); audio.play(tackle.landSound(F.place));   /* TACKLE: flight time, splash and sound by cast feel */ const bw = BAIT[F.bait || 'worm'].bite; F.wait = settings.debug && settings.instantBite ? DEBUG.biteSeconds : (bw[0] + Math.random() * (bw[1] - bw[0])) * tackle.perks(F.place).bite /* TACKLE: faster rods */ * pets.biteMul() /* PETS: the fish's hearts */; setFish('wait'); } break;
     case 'wait': F.a = 0.2 + Math.sin(elapsed * 2) * 0.02; if (F.t > F.wait) { setFish('bite'); addSplash(F.land.x, F.land.z); audio.play('bite'); } break;
     case 'bite': F.a = 0.2 - Math.abs(Math.sin(F.t * 18)) * 0.08;
       if (F.t > 2.5 + tackle.perks(F.place).reel) { toast('It got away!'); setFish('reel'); } break;   // TACKLE: better rods give a longer Reel! window
@@ -3573,6 +3585,7 @@ function update(dt) {
   audio.frame(player.pos.x, player.pos.z, player.moving, onDock(player.pos.x, player.pos.z), currentTOD(), stepPhase());
   weather.frame(dt, elapsed, TOD[todKey], todKey);
   animals.frame(dt, elapsed);   // ANIMALS: hens wander, peck, follow and lay
+  pets.frame(dt, elapsed);   // PETS: your pet follows, drifts, sleeps and swims
   if (player.moving) player.faceYaw = null;
   else if (player.faceYaw != null) {
     let d = player.faceYaw - player.yaw; d = Math.atan2(Math.sin(d), Math.cos(d));
@@ -3606,7 +3619,7 @@ function update(dt) {
     anim.pose(b);   // ANIM: run lean, idle breathing
   }
   if (body) { body.root.updateMatrixWorld(true); applyRodPose(dt); applyFarmPose(dt); }
-  setUse(pickUse() || animals.pickUse());   // ANIMALS: Collect / Pet / Feed, only when nothing else wants the button
+  setUse(pickUse() || animals.pickUse() || pets.pickUse());   // ANIMALS: Collect / Pet / Feed, only when nothing else wants the button. PETS: Adopt / Wake / Come, last in line
   updateMarker(dt);
   updateLine(dt);
   updateMoonPath();
@@ -3769,6 +3782,11 @@ function frame() {
     busy: () => busyForLevelCard() || decor.on || !document.getElementById('levelUp').hidden || document.body.classList.contains('inmenu') });
   animals.init({ THREE, scene, camera, M, SCALE, groundY, player, get S() { return S; }, settings, ICON, cropIcon, plots, commit, addItem, invCount, addXP, toast, audio, svg, renderHotbar, currentTOD,
     respawnDecor: (rec) => { despawnDecor(rec); spawnDecor(rec); }, fenceZ: () => FENCE_Z, wet: (x, z) => spots.onBank(x, z), busy: () => decor.on || farm.mode !== 'off' || fishing.state !== 'idle' || ward.on || dlg.open });
+  // PETS: everything pets.js borrows from this file (before saved decor is put back: the fish bowl is decor)
+  pets.init({ THREE, scene, camera, groundY, floorY, parseGLB, player, get S() { return S; }, ICON, svg, commit, addItem, invCount, addXP, toast, audio, renderHotbar, currentTOD, walkable, solid: petSolid, fishing, addSplash, WATER_Y, DOCK,
+    npcs: () => [higgins, fishel, pike, rosa].filter(Boolean).map(n => n.pos), busy: () => decor.on || farm.mode !== 'off' || ward.on || dlg.open || store.inside(),
+    removeDecor: (rec) => { despawnDecor(rec); const i = S.decor.indexOf(rec); if (i >= 0) S.decor.splice(i, 1); },
+    toggleNight: () => { if (!settings.debug) { toast('Night / day works in the Debug harbor'); return; } settings.todOverride = currentTOD() === 'night' ? 'day' : 'night'; storeSettings(settings); setTOD(currentTOD()); } });
   // FISHING: everything the fishing files borrow from this file, in one place
   { const _fp = new THREE.Vector3(); let sheets = null;
     const anySheet = () => { sheets = sheets || [...document.querySelectorAll('.sheet')]; return sheets.some(x => !x.hidden); };
@@ -3801,7 +3819,7 @@ function frame() {
   let skip = false; try { skip = sessionStorage.getItem('tidewell.skipMenu') === '1'; sessionStorage.removeItem('tidewell.skipMenu'); } catch (e) {}
   if (skip) startGame(); else showMainMenu();
   window.__ready = true;
-  window.__tidewell = { get merchant() { return merchant; }, THREE, scene, sun, hemi, TOD, camera, player, get S() { return S; }, fishing, settings, decor, cropIcon, farm, get body() { return body; }, fishIcon, spots, dex, tackle, farmToolMesh, plots, lotView, get clr() { return clr; }, inRock, get dig() { return digModels; }, setLook: (l) => { for (const b of Object.values(bodies)) setLook(b, l); }, joy };   // used by tools/ (screenshots, tests)
+  window.__tidewell = { pets, get merchant() { return merchant; }, THREE, scene, sun, hemi, TOD, camera, player, get S() { return S; }, fishing, settings, decor, cropIcon, farm, get body() { return body; }, fishIcon, spots, dex, tackle, farmToolMesh, plots, lotView, get clr() { return clr; }, inRock, get dig() { return digModels; }, setLook: (l) => { for (const b of Object.values(bodies)) setLook(b, l); }, joy };   // used by tools/ (screenshots, tests)
   clock.getDelta();
   requestAnimationFrame(frame);
   // Everything else loads quietly in the background, one pack at a time so the game stays smooth:
@@ -3811,6 +3829,7 @@ function frame() {
   setTimeout(async () => {
     await ensureFish();
     animals.start();   // ANIMALS: hens, eggs and the bubble are built here, in the background (before the shop's inside, which lists them)
+    pets.start();   // PETS: the pet and its buttons, built in code (no pack to load)
     await tackle.preload();   // TACKLE: rods, worm, lure, jetty and steps load quietly right after the fish
     await store.preload();   // STORE: the inside of the shop
     for (const id of CROP_ORDER) await ensureCrop(id);

@@ -1,7 +1,7 @@
 // Tidewell game data. Everything tunable lives here as plain tables so it can be
 // exported to JSON for the Unity version later (see tools/export-data.mjs).
 
-export const VERSION = '0.1.67';
+export const VERSION = '0.1.68';
 export const VERSION_LABEL = 'BETA v' + VERSION;
 
 // Rarity tiers (decision 36). `weight` is the base chance per bite with worms.
@@ -358,3 +358,19 @@ export const GOALS = [
   { id: 'order',   title: 'Fill an order at the board',              pic: 'board',  prize: { coins: 30 }, hint: 'Bring what an order asks for to the board by Higgins and tap Fill.' },
   { id: 'harvest', title: 'Harvest your turnips',                    pic: 'basket', prize: { item: 'seed_carrot', n: 5 }, hint: 'Turnips take about 20 minutes. When the bubble shows, tap Harvest.' },
 ];
+
+// ---------- pets (v0.1.68, from try/pets): the goldfish and the Shiba Inu puppy. The code is in pets.js ----------
+export const PETS = {
+  treatsFor: [0, 4, 12],                      // treats eaten in total for 1, 2, 3 hearts
+  perDay: 3,                                  // treats a day, per pet
+  bonus: [0.02, 0.05, 0.10],                  // fish: bites come this much faster at 1, 2, 3 hearts
+  treat: { pack: 5, buy: 30 },                // Nell's pet treats; the fish also takes Fishel's worms
+  starter: 3,                                 // free treats with an adoption
+  back: 0.95, side: 0.8, roam: 1.5,           // follows this far behind (or beside); drifts within this ring when you stop
+  kinds: {
+    fish: { level: 2, bed: 'fishbowl', bedName: 'Fish bowl', height: 0.5, worms: true,
+      names: ['Bubbles', 'Finn', 'Goldie', 'Splash', 'Pip', 'Coral', 'Wiggles', 'Dot', 'Sunny', 'Puddle', 'Peach', 'Blub'] },
+    dog: { level: 4, bed: 'doghouse', bedName: 'Doghouse', length: 0.85, worms: false,
+      names: ['Biscuit', 'Mochi', 'Scout', 'Peanut', 'Maple', 'Buddy', 'Waffles', 'Pepper', 'Koda', 'Ziggy', 'Bean', 'Toast'] },
+  },
+};
