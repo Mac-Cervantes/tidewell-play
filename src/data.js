@@ -1,7 +1,7 @@
 // Tidewell game data. Everything tunable lives here as plain tables so it can be
 // exported to JSON for the Unity version later (see tools/export-data.mjs).
 
-export const VERSION = '0.1.75';
+export const VERSION = '0.1.76';
 export const VERSION_LABEL = 'BETA v' + VERSION;
 
 // Rarity tiers (decision 36). `weight` is the base chance per bite with worms.
@@ -373,7 +373,7 @@ export const PETS = {
     dog: { level: 4, bed: 'doghouse', bedName: 'Doghouse', length: 0.85, worms: false,
       names: ['Biscuit', 'Mochi', 'Scout', 'Peanut', 'Maple', 'Buddy', 'Waffles', 'Pepper', 'Koda', 'Ziggy', 'Bean', 'Toast'] },
     // the stray cat (v0.1.72): wanders from day one and becomes yours through treats and petting (PETS.tame); eats common fish
-    cat: { level: 1, bed: 'catbed', bedName: 'Cat basket', length: 0.7, worms: false, fish: true,
+    cat: { level: 1, bed: 'catbed', bedName: 'Cat basket', length: 1.2, coat: 'tabby', worms: false, fish: true,
       names: ['Mittens', 'Shadow', 'Pepper', 'Socks', 'Olive', 'Tux', 'Luna', 'Boots', 'Smokey', 'Misty', 'Domino', 'Figaro'] },
   },
   // winning the stray cat over (Mac: about 3 days): a treat or a common fish is 1 point (3 a day), a pet is 1 point (once a day);

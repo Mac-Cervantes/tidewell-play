@@ -142,22 +142,39 @@ function buildCrate() {
   return g;
 }
 // the walkers (puppy, cat): one model each (nose along +z), set on its feet, sized by length, with one action per clip
-const CAT_COLORS = { Grey: 0x5a5a66, White: 0xf4f1ea, Pink: 0xf29bb2 };   // the pack's tuxedo cat; the colours didn't survive the file conversion
+const CAT_COATS = { tux: { Grey: 0x5a5a66, White: 0xf4f1ea, Pink: 0xf29bb2 }, orange: { Grey: 0xf0943c, White: 0xfff3e0, Pink: 0xf29bb2 }, tabby: { Grey: 0xf0943c, White: 0xfff3e0, Pink: 0xf29bb2, stripe: 0.62 } };
+const catLab = () => (typeof window !== 'undefined' && window.__catLab) || {};
+const catCoat = () => CAT_COATS[catLab().coat || K.cat.coat] || CAT_COATS.tux;
+// tabby stripes, painted in the shader from each point's place on the model at rest (x runs nose to tail, z is up), so they stay put while it walks
+function tabby(m, dark) {
+  m.onBeforeCompile = (sh) => {
+    sh.uniforms.uStripe = { value: dark };
+    sh.vertexShader = 'varying vec3 vCatP;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvCatP = position;');
+    sh.fragmentShader = 'varying vec3 vCatP;\nuniform float uStripe;\n' + sh.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
+      { float tail = smoothstep(-0.0165, -0.0195, vCatP.x);
+        float along = mix((vCatP.x + abs(vCatP.y) * 0.9) * 520.0, vCatP.z * 640.0, tail);
+        float band = smoothstep(0.35, 0.6, sin(along));
+        float back = mix(smoothstep(0.016, 0.024, vCatP.z), 1.0, tail);
+        float face = smoothstep(0.019, 0.015, vCatP.x);
+        diffuseColor.rgb *= mix(1.0, uStripe, band * back * face); }`);
+  };
+  m.customProgramCacheKey = () => 'tabby';
+}   // the pack's tuxedo cat; the colours didn't survive the file conversion
 // the cat pack only has Idle and Walking, so every other clip the code asks for falls back to one of those
 const CLIP = { cat: { Idle: 'Idle', Walk: 'Walking', Gallop: 'Walking', Idle_2: 'Idle', Idle_2_HeadLow: 'Idle', Eating: 'Idle', Jump_ToIdle: 'Idle', Death: 'Idle' } };
 const rigs = {};
 function buildRig(k) {
   if (rigs[k]) return rigs[k];
   const src = srcs[k], s = src.scene, w = new THREE.Group();
-  s.traverse(o => { if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; const ms = Array.isArray(o.material) ? o.material : [o.material]; ms.forEach(m => { m.metalness = 0; m.roughness = 0.85; m.flatShading = true; if (k === 'cat' && CAT_COLORS[m.name] != null) m.color.setHex(CAT_COLORS[m.name]); m.needsUpdate = true; }); } });
+  s.traverse(o => { if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; const ms = Array.isArray(o.material) ? o.material : [o.material]; ms.forEach(m => { m.metalness = 0; m.roughness = 0.85; m.flatShading = true; if (k === 'cat') { const coat = catCoat(); if (coat[m.name] != null) m.color.setHex(coat[m.name]); if (m.name === 'Grey' && coat.stripe) tabby(m, coat.stripe); } m.needsUpdate = true; }); } });
   if (k === 'cat') s.rotation.y = -Math.PI / 2;   // the pack's cat has its nose along +x; turned to +z like the puppy (it walked sideways in v0.1.72)
   s.updateMatrixWorld(true);
   const box = new THREE.Box3().setFromObject(s, true), sz = box.getSize(new THREE.Vector3()), c = box.getCenter(new THREE.Vector3());
-  s.position.set(-c.x, -box.min.y, -c.z); w.add(s); w.scale.setScalar(K[k].length / Math.max(sz.x, sz.z));
+  s.position.set(-c.x, -box.min.y, -c.z); w.add(s); w.scale.setScalar((k === 'cat' && catLab().length || K[k].length) / Math.max(sz.x, sz.z));
   const mx = new THREE.AnimationMixer(s), acts = {};
   for (const a of src.animations) acts[a.name.split('|').pop()] = mx.clipAction(a);
   let blob = null;
-  if (k === 'cat') { blob = buildBlob(); blob.material.opacity = 0.3; const u = 1 / w.scale.x; blob.scale.set(0.62 * u, 1.05 * u, 1); blob.position.y = 0.025 * u; blob.renderOrder = 1; w.add(blob); }   // soft dark patch right under the cat, so it reads as sitting on the grass (the sun's shadow alone lands a little away from it)
+  if (k === 'cat') { blob = buildBlob(); blob.material.opacity = 0.3; const u = 1 / w.scale.x, big = K.cat.length / 0.7; blob.scale.set(0.62 * u * big, 1.05 * u * big, 1); blob.position.y = 0.025 * u; blob.renderOrder = 1; w.add(blob); }   // soft dark patch right under the cat, so it reads as sitting on the grass (the sun's shadow alone lands a little away from it)
   return (rigs[k] = { w, s, blob, baseY: s.position.y, mx, acts, cur: '' });
 }
 const buildDog = () => buildRig('dog');
@@ -221,6 +238,7 @@ function buildCatBed() {   // a round basket with a cushion
   const g = new THREE.Group();
   g.add(mesh(new THREE.CylinderGeometry(0.4, 0.34, 0.16, 12), mat(0xb9793f), 0, 0.08, 0));
   const c = mesh(new THREE.CylinderGeometry(0.33, 0.33, 0.06, 12), mat(0xf2a0b5), 0, 0.17, 0); c.castShadow = false; g.add(c);
+  g.scale.set(1.3, 1, 1.3);   // the cat got bigger in v0.1.76
   return g;
 }
 
@@ -699,7 +717,7 @@ function placeUI() {
     const c = strays.cat, show = !!c && !quiet && Math.hypot(A.player.pos.x - c.x, A.player.pos.z - c.z) < 6.5;
     if (show) {
       const n = pawsOf(); if (ui.paws.dataset.n !== String(n)) { ui.paws.dataset.n = String(n); ui.paws.innerHTML = [0, 1, 2, 3, 4].map(i => `<svg width="18" height="18" viewBox="0 0 24 24" fill="${i < n ? '#b9733b' : '#e9e2d4'}" stroke="${i < n ? '#2b2140' : '#b9b1c6'}" stroke-width="1.6" aria-hidden="true">${A.ICON.paw}</svg>`).join(''); ui.paws.setAttribute('aria-label', `${n} of 5 paws`); }
-      const s = project(c.x, c.y + 0.72, c.z); ui.paws.style.transform = `translate(${Math.round(s.x)}px, ${Math.round(s.y)}px) translate(-50%, -100%)`;
+      const s = project(c.x, c.y + 0.72 * K.cat.length / 0.7, c.z); ui.paws.style.transform = `translate(${Math.round(s.x)}px, ${Math.round(s.y)}px) translate(-50%, -100%)`;
     }
     ui.paws.hidden = !show;
   }
