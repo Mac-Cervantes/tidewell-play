@@ -150,12 +150,13 @@ function buildRig(k) {
   if (rigs[k]) return rigs[k];
   const src = srcs[k], s = src.scene, w = new THREE.Group();
   s.traverse(o => { if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; const ms = Array.isArray(o.material) ? o.material : [o.material]; ms.forEach(m => { m.metalness = 0; m.roughness = 0.85; m.flatShading = true; if (k === 'cat' && CAT_COLORS[m.name] != null) m.color.setHex(CAT_COLORS[m.name]); m.needsUpdate = true; }); } });
+  if (k === 'cat') s.rotation.y = -Math.PI / 2;   // the pack's cat has its nose along +x; turned to +z like the puppy (it walked sideways in v0.1.72)
   s.updateMatrixWorld(true);
   const box = new THREE.Box3().setFromObject(s, true), sz = box.getSize(new THREE.Vector3()), c = box.getCenter(new THREE.Vector3());
   s.position.set(-c.x, -box.min.y, -c.z); w.add(s); w.scale.setScalar(K[k].length / Math.max(sz.x, sz.z));
   const mx = new THREE.AnimationMixer(s), acts = {};
   for (const a of src.animations) acts[a.name.split('|').pop()] = mx.clipAction(a);
-  return (rigs[k] = { w, mx, acts, cur: '' });
+  return (rigs[k] = { w, s, baseY: s.position.y, mx, acts, cur: '' });
 }
 const buildDog = () => buildRig('dog');
 // blend to a clip; the puppy's 'Death' is borrowed as its lying-down pose (no sleep clip in the pack): it starts near its end and holds there
@@ -170,6 +171,42 @@ function anim(k, want, dt, speed = 1) {
   d.acts[name].timeScale = speed; d.mx.update(dt);
 }
 const dogAnim = (name, dt, speed) => anim('dog', name, dt, speed);
+// ---------- cat loaves (Mac's picture, v0.1.73): what the cat does when it's been still for a while ----------
+// The pack has no sitting or lying clip, so the loaf is posed in code on top of the idle: the legs tuck up into the body, the body
+// settles onto the ground and the tail wraps round the hip. 'full' = all four tucked, 'partial' = front paws out, 'faceplant' = head down (asleep).
+const LOAF = { legsF: ['Bone014', 'Bone017'], legsB: ['Bone008', 'Bone011'], tail: ['Bone004', 'Bone005', 'Bone006', 'Bone007'],
+  tuck: 0.12, drop: 0.98, tailX: [1.7, 0, 0, 0], tailZ: [-0.5, -1.1, -1.0, -0.8], frontX: 1.4, frontScale: 0.75, headX: -1.15 };
+function catPose(rig, pose, k) {
+  if (!rig) return;
+  if (!rig.b) {
+    rig.b = {}; rig.s.traverse(o => { if (o.isBone) rig.b[o.name] = o; });
+    if (!rig.b.Bone014 || !rig.b.Bone016) { rig.noPose = true; return; }
+    rig.w.updateMatrixWorld(true);
+    const sh = rig.b.Bone014.getWorldPosition(new THREE.Vector3()), ft = rig.b.Bone016.getWorldPosition(new THREE.Vector3()), ws = rig.w.getWorldScale(new THREE.Vector3()).x || 1;
+    rig.leg = (sh.y - ft.y) / ws; rig.q = new THREE.Quaternion(); rig.e = new THREE.Euler();
+  }
+  if (rig.noPose) return;
+  const b = rig.b, L = LOAF, rot = (n, x, z) => { if (b[n]) { rig.e.set(x * k, 0, z * k); b[n].quaternion.multiply(rig.q.setFromEuler(rig.e)); } };
+  const tuck = 1 + (L.tuck - 1) * k, front = pose === 'partial' ? 1 + (L.frontScale - 1) * k : tuck;
+  for (const n of L.legsB) if (b[n]) b[n].scale.setScalar(tuck);
+  for (const n of L.legsF) if (b[n]) b[n].scale.setScalar(front);
+  rig.s.position.y = rig.baseY - rig.leg * L.drop * k;
+  if (k <= 0.001) return;
+  if (pose === 'partial') for (const n of L.legsF) rot(n, L.frontX, 0);
+  L.tail.forEach((n, i) => rot(n, L.tailX[i], L.tailZ[i]));
+  if (pose === 'faceplant') rot('Bone003', L.headX, 0);
+}
+// o is the stray or the pet cat: after a few seconds of standing still it settles into a loaf, and stands up quickly when it moves
+function catLoaf(o, dt, still, sleepy) {
+  o.stillT = still ? (o.stillT || 0) + dt : 0;
+  if (!still) o.loaf = null;
+  else if (sleepy) o.loaf = 'faceplant';
+  else if (!o.loaf && o.stillT > 3.5) o.loaf = Math.random() < 0.6 ? 'full' : 'partial';
+  else if (o.loaf === 'faceplant') o.loaf = 'full';   // woke up
+  if (o.loaf) o.loafWas = o.loaf;
+  const want = o.loaf ? 1 : 0; o.loafK = (o.loafK || 0) + (want - (o.loafK || 0)) * Math.min(1, dt * (want ? 2.5 : 8));
+  catPose(rigs.cat, o.loafWas || 'full', o.loafK < 0.01 ? 0 : o.loafK);
+}
 function buildCatBed() {   // a round basket with a cushion
   const g = new THREE.Group();
   g.add(mesh(new THREE.CylinderGeometry(0.4, 0.34, 0.16, 12), mat(0xb9793f), 0, 0.08, 0));
@@ -344,6 +381,7 @@ function tickDog(p, R, dt, elapsed, night, held) {
   else if (R.sp > 0.3) { clip = 'Walk'; speed = k === 'cat' ? Math.min(3.2, Math.max(0.7, R.sp / 1.1)) : Math.min(1.9, Math.max(0.7, R.sp / 1.5)); }
   else if (R.shot) clip = R.shot.name;
   anim(k, clip, dt, speed);
+  if (k === 'cat') catLoaf(R, dt, R.sp < 0.15 && !held && !R.shot, R.doze);
   R.y = A.floorY(R.x, R.z) + (R.doze && house ? (k === 'cat' ? 0.2 : 0.04) : 0);
   R.g.position.set(R.x, R.y, R.z); R.g.rotation.set(0, R.yaw, 0);
 }
@@ -409,9 +447,10 @@ function tickCat(dt) {
   else if (dP < 1.7 && !running) { stand(c, dt); face(c, P.x, P.z, dt); c.goal = null; }   // right beside you: waits to see what you've got
   else {                                                                       // wandering
     if (!c.goal) { stand(c, dt); c.wait -= dt; if (c.wait <= 0) { c.goal = pick(c.x, c.z, 4.5); if (!c.goal) c.wait = 1; } }
-    else if (step(c, c.goal.x, c.goal.z, 0.95, dt, false) < 0.12 || c.stuck > 0.7) { c.goal = null; c.stuck = 0; c.wait = rnd(2, 5.5); }
+    else if (step(c, c.goal.x, c.goal.z, 0.95, dt, false) < 0.12 || c.stuck > 0.7) { c.goal = null; c.stuck = 0; c.wait = Math.random() < 0.45 ? rnd(9, 18) : rnd(2, 5); }   // a short stop, or a long one (long enough to loaf)
   }
   anim('cat', c.sp > 0.3 ? 'Walk' : 'Idle', dt, c.sp > 0.3 ? Math.min(3.2, Math.max(0.7, c.sp / 1.1)) : 1);
+  catLoaf(c, dt, c.sp < 0.15 && c.hold <= 0 && !(dP < 1.7), false);   // it stands up when you come right up to it
   c.y = A.floorY(c.x, c.z); c.g.position.set(c.x, c.y, c.z); c.g.rotation.set(0, c.yaw, 0);
 }
 function catPoint(what) {
