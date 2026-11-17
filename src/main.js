@@ -1024,7 +1024,7 @@ function renderHotbar() {
   const harvestN = CROP_ORDER.reduce((n, id) => n + invCount(id), 0);
   const icon = (t) => t.id === 'seeds' ? `<span class="seedpk big">${cropImg(ITEMS[seedSel()].crop, 22)}</span>` : t.id === 'farm' ? svg(FARM_TOOLS[farmSel()].icon) : svg(t.id);
   const count = (t) => t.id === 'fruit' ? `<span class="n">${harvestN}</span>` : t.item ? `<span class="n">${invCount(t.item)}</span>` : '';
-  hotbar.innerHTML = TOOLS.map(t => `<button class="slot${t.id === tool ? ' on' : ''}" data-tool="${t.id}" aria-label="${t.name}${t.id === 'rod' ? ', bait: ' + (bb ? BAIT[bb].name : 'none') : ''}" aria-pressed="${t.id === tool}">${icon(t)}${count(t)}${badge(t)}</button>`).join('');
+  hotbar.innerHTML = goals.bar(TOOLS).map(t => `<button class="slot${t.id === tool ? ' on' : ''}" data-tool="${t.id}" aria-label="${t.name}${t.id === 'rod' ? ', bait: ' + (bb ? BAIT[bb].name : 'none') : ''}" aria-pressed="${t.id === tool}">${icon(t)}${count(t)}${badge(t)}</button>`).join('');
   renderSeedTray(); renderFarmTray();
   document.querySelector('#toolName span').textContent = tool === 'none' ? 'Empty hands' : TOOLS.find(t => t.id === tool).name;
 }

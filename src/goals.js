@@ -12,7 +12,7 @@ let A, T, card, fx, hand, arrow, doneEl, ring, glowEl = null, hullOf = null;
 const dots = [], doneQ = [];
 const byId = (id) => document.getElementById(id);
 const vis = (id) => { const e = byId(id); return !!e && !e.hidden; };
-const slot = (i) => document.querySelectorAll('#hotbar .slot')[i] || null;
+const slot = (id) => document.querySelector(`#hotbar .slot[data-tool="${id}"]`);
 const isOn = (el) => !!el && el.classList.contains('on');
 const total = (S) => Object.values(S.caught || {}).reduce((a, b) => a + b, 0);
 const npcAt = (k) => { const n = A.npc(k); return n ? { x: n.pos.x, z: n.pos.z, npc: n, h: 2.45 } : null; };
@@ -24,13 +24,13 @@ const plotAt = (p) => ({ x: p.x + 0.5, z: p.z + 0.5, ring: true, h: 1.2 });
 const farmTile = (id) => document.querySelector(`#farmTray [data-farm="${id}"]`);
 function farmStep(id, spot) {   // Farm tools → the right tool → drag it over the spot
   const m = A.farm.mode;
-  if (m === 'off') return slot(1);
+  if (m === 'off') return slot('farm');
   if (m === 'tray' || (m === 'ready' && A.farmPicked() !== id)) return farmTile(id);
   if (m === 'ready') return { drag: spot() };
   return null;   // dragging or floating back
 }
 const tillStep = () => farmStep('hoe', () => ({ x: A.player.pos.x, z: A.player.pos.z + 1.3 }));
-const seedStep = () => isOn(slot(2)) ? null : slot(2);
+const seedStep = () => isOn(slot('seeds')) ? null : slot('seeds');
 const RULES = {
   hello:   { on: 'talk', use: ['Talk'], at: () => npcAt('higgins') },
   plant:   { poll: (S) => S.plots.some(p => p.crop), use: ['Plant'],
@@ -40,13 +40,13 @@ const RULES = {
              ui: (S) => { const p = S.plots.find(q => q.crop); return p ? farmStep('can', () => plotAt(p)) : S.plots.length ? seedStep() : tillStep(); } },
   worms:   { on: 'worms', use: ['Take'], at: () => ({ ...A.bucketPos(), ring: true, h: 1.1 }), skip: () => A.bucketCount() <= 0 },
   catch:   { start: (S, g) => { g.base = total(S); }, poll: (S, g) => total(S) > (g.base || 0), use: ['Cast', 'Reel!'],
-             ui: () => isOn(slot(0)) ? null : slot(0),
+             ui: () => isOn(slot('rod')) ? null : slot('rod'),
              at: () => A.fishing.state === 'idle' ? { x: A.DOCK.x - 0.45, z: -6.5, via: [{ x: A.DOCK.x, z: -3.4 }], ring: true, h: 1.3 } : null },
   book:    { poll: () => vis('fishBook'), ui: () => vis('menu') ? byId('menuFish') : byId('menuBtn') },
   sell:    { on: 'sell', use: ['Talk'], at: () => npcAt('higgins'),
              ui: () => A.dlgOpen() ? [...document.querySelectorAll('#dChoices button')].find(b => /^Sell/.test(b.textContent)) || null : null },
   bench:   { poll: (S) => S.decor.length > 0,
-             ui: () => !vis('decorTray') ? slot(4) : vis('decorCtl') ? byId('dPlace') : document.querySelector('#decorTray [data-decor="bench"]') || document.querySelector('#decorTray [data-decor]') },
+             ui: () => !vis('decorTray') ? slot('decor') : vis('decorCtl') ? byId('dPlace') : document.querySelector('#decorTray [data-decor="bench"]') || document.querySelector('#decorTray [data-decor]') },
   order:   { on: 'order', use: ['Orders'], at: () => ({ x: A.BOARD.x, z: A.BOARD.z + 0.9, ring: true, h: 2.3 }),
              ui: () => vis('orders') ? document.querySelector('#orders [data-ofill]:not([disabled])') : null },
   harvest: { on: 'harvest', use: ['Harvest', 'Plant'],
@@ -64,9 +64,26 @@ function state() {
 }
 const cur = () => { const g = state(); return g.done ? null : GOALS[g.i]; };
 
-export function event(name) { const d = cur(); if (d && RULES[d.id].on === name) complete(); }
+export function event(name) { if (name === 'harvest') earn('fruit'); const d = cur(); if (d && RULES[d.id].on === name) complete(); }
+
+// ---------- the toolbar fills up (Mac, v0.1.71, mockup A): a tool shows once you've earned it, in the order you got it ----------
+const TOOL_AT = [['farm', 1], ['seeds', 1], ['rod', 3], ['decor', 7], ['fruit', 10]];   // tool, and the goal number it arrives with (the basket also comes with a first harvest)
+const TOOL_NAME = { farm: 'Farm tools', seeds: 'Seeds', rod: 'Fishing rod', decor: 'Decorate', fruit: 'Harvest basket' };
+const TOOL_PIC = { farm: 'hoe', seeds: 'seeds', rod: 'rod', decor: 'decor', fruit: 'fruit' };
+const newQ = [];
+function earn(id) { const g = state(); if (!g.bar || g.bar.includes(id)) return; g.bar.push(id); newQ.push(id); A.renderHotbar(); }
+function syncBar() {
+  const g = state();
+  if (!g.bar) g.bar = g.done ? ['rod', 'farm', 'seeds', 'fruit', 'decor'] : [];   // a harbor already under way keeps its whole bar, as it was
+  for (const [id, at] of TOOL_AT) if (g.i >= at) earn(id);
+}
+export function bar(tools) {   // main.js's renderHotbar asks which tools to draw
+  if (!A) return tools;
+  syncBar(); const b = state().bar;
+  return tools.filter(t => b.includes(t.id) || !TOOL_NAME[t.id]).sort((x, y) => b.indexOf(x.id) - b.indexOf(y.id));
+}
 export function debug(k) {
-  if (k === 'restart') { A.S.goals = { i: 0 }; doneQ.length = 0; doneEl.hidden = true; A.commit(); A.toast('Goals: back to the first one'); }
+  if (k === 'restart') { A.S.goals = { i: 0 }; doneQ.length = 0; newQ.length = 0; doneEl.hidden = true; A.renderHotbar(); A.commit(); A.toast('Goals: back to the first one'); }
   if (k === 'skip' && cur()) complete();
 }
 
@@ -95,7 +112,20 @@ function renderCard() {
     <span class="gprize">Prize: ${prizeHTML(d.prize)}</span>`;
 }
 function tickDone() {
-  if (!doneQ.length || !doneEl.hidden || A.busy()) return;
+  if (!doneEl.hidden || A.busy()) return;
+  if (!doneQ.length && newQ.length) {   // "New tool!": after the goal card, the tools that just arrived (mockup: the unlock moment)
+    const ids = newQ.splice(0);
+    doneEl.innerHTML = `<div class="gdcard" role="dialog" aria-label="New tool"><div class="gdh">${STAR(28)} New tool${ids.length > 1 ? 's' : ''}!</div>
+      <div class="gdtools">${ids.map(id => `<div><span class="gdtool">${A.svg(TOOL_PIC[id], '#2b2140', 44)}</span><b>${TOOL_NAME[id]}</b></div>`).join('')}</div>
+      <div class="gdsub">${ids.length > 1 ? 'They\u2019re' : 'It\u2019s'} on your toolbar now</div><button class="gdok">Nice!</button></div>`;
+    doneEl.hidden = false; A.audio.play('levelUp');
+    doneEl.querySelector('.gdok').addEventListener('click', () => {
+      doneEl.hidden = true;
+      for (const id of ids) { const el = slot(id); if (el) { el.classList.add('goalNew'); setTimeout(() => el.classList.remove('goalNew'), 3200); } }
+    });
+    return;
+  }
+  if (!doneQ.length) return;
   const { d, next } = doneQ.shift();
   doneEl.innerHTML = `<div class="gdcard" role="dialog" aria-label="Goal done">${STAR(54)}
     <div class="gdh">${next ? 'Goal done!' : 'All ten done!'}</div><div class="gdsub">${d.title}</div><div class="gdprize">${prizeHTML(d.prize, true)}</div>
@@ -202,7 +232,7 @@ function guide(dt, r) {
 }
 
 export function frame(dt) {
-  const S = A.S, g = state();
+  const S = A.S, g = state(); syncBar();
   byId('menuFish').hidden = !g.done && g.i < 5;      // the Fish Book shows up with its goal (Mac: hide the buttons)
   byId('menuOrders').hidden = !g.done && g.i < 8;    // and Orders with the order goal
   renderCard();
@@ -256,5 +286,10 @@ body.inmenu #goalFx, body.inmenu #goalDone { display: none; }
 #goalDone .gdh { font-size: 24px; font-weight: 700; } #goalDone .gdsub { font-size: 13.5px; color: #6b5a8a; }
 #goalDone .gdprize { font-size: 26px; font-weight: 700; margin-top: 8px; }
 #goalDone .gdnext { margin-top: 12px; padding-top: 10px; border-top: 2px dashed #cdbfe0; } #goalDone .gdnext span { display: block; font-size: 13px; color: #6b5a8a; } #goalDone .gdnext b { font-size: 17px; }
+#goalDone .gdh svg { vertical-align: -4px; }
+#goalDone .gdtools { display: flex; justify-content: center; gap: 14px; margin: 12px 0 8px; } #goalDone .gdtools b { display: block; font-size: 16px; margin-top: 6px; }
+#goalDone .gdtool { display: inline-flex; width: 84px; height: 84px; border-radius: 22px; background: #fff7dd; border: 3px solid #2b2140; align-items: center; justify-content: center; box-shadow: 0 0 0 4px #ffd84d, 0 0 18px 8px rgba(255,226,100,.9); }
+.goalNew { animation: goalNewPop .5s cubic-bezier(.3,1.6,.5,1), goalPulse .8s ease-in-out .5s 3 alternate; box-shadow: 0 0 0 4px #ffd84d, 0 0 16px 8px rgba(255,226,100,.9); }
+@keyframes goalNewPop { from { transform: scale(.2); } }
 #goalDone .gdok { margin-top: 12px; width: 100%; background: #8fcf63; border: 2.5px solid #2b2140; border-radius: 14px; padding: 9px; font: inherit; font-weight: 700; font-size: 17px; color: #2b2140; cursor: pointer; }
 `;
