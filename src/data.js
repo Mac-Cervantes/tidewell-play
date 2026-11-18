@@ -1,7 +1,7 @@
 // Tidewell game data. Everything tunable lives here as plain tables so it can be
 // exported to JSON for the Unity version later (see tools/export-data.mjs).
 
-export const VERSION = '0.1.93';
+export const VERSION = '0.1.94';
 export const VERSION_LABEL = 'BETA v' + VERSION;
 
 // Rarity tiers (decision 36). `weight` is the base chance per bite with worms.
@@ -85,7 +85,7 @@ export const CAST = {
 // Sightings (Mac): not caught on a rod. They surface out at sea now and then and you spot them for the book.
 export const SIGHTS = [
   { id: 'dolphin', name: 'Dolphin', model: 'Dolphin', len: 2.4, chance: 0.8 },
-  { id: 'whale',   name: 'Whale',   model: 'Whale',   len: 7,   chance: 0.2 },
+  { id: 'whale',   name: 'Whale',   model: 'Whale',   len: 9.5,  chance: 0.2 },
 ];
 // Hints in the fish book (Mac: picture chips; the last two unlock). Where, when and season always show.
 // The bait hint opens at a town level by rarity; the rain hint after `rainTask` catches at that fish's place.
