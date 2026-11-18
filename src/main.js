@@ -1277,6 +1277,7 @@ const ACTIONS = {
   lot: { label: 'Buy', icon: 'coin', color: '#e8a93a' },
   clear: { label: 'Clear', icon: 'hoe', color: '#3e8ee8' },
   load: { label: 'Load', icon: 'crate', color: '#c98d4b' },
+  buybox: { label: 'Buy', icon: 'crate', color: '#e0a020' },
   dig: { label: 'Dig', icon: 'shovel', color: '#a8743f' },
   needtool: { label: 'Need', icon: 'lock', color: '#9a8fae' },
   collect: { label: 'Collect', icon: 'coin', color: '#e0a020' },
@@ -1452,6 +1453,7 @@ function doAction(a) {
   if (a.kind === 'lot') { openLotSheet(a.lot); return; }
   if (a.kind === 'clear') { startClear(a.item); return; }
   if (a.kind === 'load') { openCargo(a.box); return; }
+  if (a.kind === 'buybox') { renderHold(); openSheet('holdSheet'); return; }
   if (a.kind === 'dig') { digSpot(a.spot); return; }
   if (a.kind === 'needtool') { toast(a.why); return; }
   if (a.kind === 'collect') { collectCargo(); return; }
@@ -1896,7 +1898,7 @@ function pickUse() {
   }
   if (clr) return null;
   const sl = nearLotSign(); if (sl && fishing.state === 'idle') return { kind: 'lot', key: sl.id, lot: sl };
-  if (fishing.state === 'idle') { const cb = tool === 'rod' ? null : nearCargo(); if (cb !== null) return { kind: 'load', key: 'cargo' + cb, box: cb }; if (nearChest()) return { kind: 'collect', key: 'collect' }; }
+  if (fishing.state === 'idle') { const cb = tool === 'rod' ? null : nearCargo(); if (cb !== null) return { kind: 'load', key: 'cargo' + cb, box: cb }; if (tool !== 'rod' && nearNextBox()) return { kind: 'buybox', key: 'buybox' }; if (nearChest()) return { kind: 'collect', key: 'collect' }; }
   const wi0 = nearWeed(), ds = fishing.state === 'idle' && nearDig();
   if (ds && !(wi0 && Math.hypot(wi0.position.x - player.pos.x, wi0.position.z - player.pos.z) < Math.hypot(ds.g.position.x - player.pos.x, ds.g.position.z - player.pos.z))) return hasTool('shovel') ? { kind: 'dig', key: 'dig' + ds.i, spot: ds } : { kind: 'needtool', key: 'digneed', icon: 'shovel', label: 'Dig', why: `Dig spots need a shovel. ${toolSeller()} sells them.` };
   const wi = wi0; if (wi && fishing.state === 'idle' && !(tool === 'rod' && nearWater())) {   // FISHING: with the rod out by the water, Cast wins over Clear
@@ -2849,48 +2851,52 @@ function nearWeed() {
 let cargoReady = false, cargoModels = [], chestModel = null, shipAnim = null;
 const cargoBubEl = document.getElementById('cargoBubbles');
 const cargoOpen = () => S.level >= CARGO.openLevel;
-const holdOf = () => CARGO.holds[Math.min((S.cargo && S.cargo.hold) || 0, CARGO.holds.length - 1)];
-function cargoBoxes() {
-  const h = holdOf(), out = [];
-  for (let i = 0; i < h.crates; i++) out.push({ kind: 'crate' });
-  for (let i = 0; i < h.barrels; i++) out.push({ kind: 'barrel' });
-  out.push({ kind: 'star' });
-  return out;
-}
+// each crate or barrel on the dock: { kind, lv }. S.cargo.boxes holds what's loaded, one entry per slot, then the star crate last.
+function cargoBoxes() { return [...S.cargo.slots.map(s => ({ kind: s.kind, lv: s.lv })), { kind: 'star' }]; }
+const nextBox = () => (S.cargo ? CARGO.more[S.cargo.slots.length - CARGO.start.length] : null) || null;   // the next one you can buy, or null
 function newStar() {
   const pool = ORDERS.wants.filter(w => ITEMS[w.item].kind !== 'crop' || unlockLevel('seed_' + w.item) <= S.level);
   const w = pool[Math.floor(Math.random() * pool.length)];
   return { item: w.item, n: Math.max(2, Math.min(5, w.n[0] + Math.floor(Math.random() * 3))) };
 }
 function ensureCargo() {
-  if (!S.cargo) S.cargo = { hold: 0, boxes: [], star: null, back: 0, payout: null };
-  const n = cargoBoxes().length;
-  // keep what's loaded when the hold grows; the star crate is always last
+  if (!S.cargo) S.cargo = { slots: CARGO.start.map(kind => ({ kind, lv: 1 })), boxes: [], star: null, back: 0, payout: null };
+  if (!S.cargo.slots) {   // a save from before v0.1.82: its bundle becomes single crates and barrels; ×10 was level 2, ×20 level 3
+    const h = CARGO.holds[Math.min(S.cargo.hold || 0, CARGO.holds.length - 1)], lv = h.cap >= 20 ? 3 : 2;
+    S.cargo.slots = [...Array(h.crates).fill('crate'), ...Array(h.barrels).fill('barrel')].map(kind => ({ kind, lv }));
+    delete S.cargo.hold;
+  }
+  const n = S.cargo.slots.length + 1;
+  // keep what's loaded when a crate is added; the star crate is always last
   const old = S.cargo.boxes || [], starLoad = old.length ? old[old.length - 1] : {};
   const body = old.slice(0, Math.max(0, old.length - 1));
   S.cargo.boxes = [...Array(n - 1)].map((_, i) => body[i] || {}).concat([starLoad || {}]);
   if (!S.cargo.star) S.cargo.star = newStar();
 }
 const boxCount = (b) => Object.values(b || {}).reduce((t, n) => t + n, 0);
-const capOf = (kind) => kind === 'star' ? S.cargo.star.n : holdOf().cap;
-const fits = (kind, id) => kind === 'star' ? id === S.cargo.star.item : kind === 'crate' ? ITEMS[id].kind === 'crop' : ITEMS[id].kind === 'fish';
+const capOf = (kind, i) => kind === 'star' ? S.cargo.star.n : CARGO.caps[(S.cargo.slots[i] ? S.cargo.slots[i].lv : 1) - 1];
+// crops in crates, fish in barrels, and one kind of thing per crate or barrel until it's empty again (Mac)
+const fits = (kind, id, b) => { const inIt = Object.keys(b || {}).filter(k => b[k] > 0); if (kind !== 'star' && inIt.length && !inIt.includes(id)) return false;
+  return kind === 'star' ? id === S.cargo.star.item : kind === 'crate' ? ITEMS[id].kind === 'crop' : ITEMS[id].kind === 'fish'; };
 const shipAway = () => S.cargo && S.cargo.back > 0;
 const cargoLoaded = () => S.cargo && S.cargo.boxes.some(b => boxCount(b) > 0);
 // crates down both sides of the dock, small picture bubbles, and the full bubble on the crate you stand at (mockup C, v0.1.81); window.__cargoLab overrides for mockups
 const cargoLab = () => ({ zig: 1, sm: 1, focus: 1, gap: 1.15, ...(window.__cargoLab || {}) });
-function boxPos(i) { const L = cargoLab(); return L.zig ? { x: DOCK.x + (i % 2 ? -1 : 1) * (DOCK.half - 0.39), z: -4.3 - i * (L.gap || 0.78) } : { x: DOCK.x + 0.58, z: -4.3 - i * (L.gap || 0.78) }; }
+function spotPos(p) { const L = cargoLab(); return { x: DOCK.x + (p % 2 ? -1 : 1) * (DOCK.half - 0.39), z: DOCK.zFar + 1.7 + p * L.gap }; }
+function boxPos(i) { return spotPos(S.cargo && i >= S.cargo.slots.length ? 0 : i + 1); }   // the star crate stands nearest the ship
+const nextPos = () => spotPos(S.cargo.slots.length + 1);
 function buildCargo() { cargoReady = true; refreshCargo(true); }
 function refreshCargo(first) {
   if (!cargoReady) return;
   const open = cargoOpen();
   if (open) ensureCargo();
   // the crates and barrels on the dock
-  const kinds = open ? cargoBoxes().map(b => b.kind) : [];
-  if (kinds.join() !== cargoModels.map(o => o.userData.kind).join()) {
+  const kinds = open ? cargoBoxes().map(b => b.kind) : [], lvs = open ? cargoBoxes().map(b => b.lv || 0) : [];
+  if (kinds.join() + lvs.join() !== cargoModels.map(o => o.userData.kind).join() + cargoModels.map(o => o.userData.lv).join()) {
     cargoModels.forEach(o => scene.remove(o)); cargoModels = [];
     kinds.forEach((k, i) => {
-      const p = boxPos(i), o = place('pirate', k === 'barrel' ? 'barrel' : k === 'star' ? 'crate-bottles' : 'crate', p.x, p.z, { r: (i % 3 - 1) * 0.08, s: 0.62 });
-      o.position.y = DOCK_FLOOR + 0.02; o.userData.kind = k; cargoModels.push(o);
+      const p = boxPos(i), o = place('pirate', k === 'barrel' ? 'barrel' : k === 'star' ? 'crate-bottles' : 'crate', p.x, p.z, { r: (i % 3 - 1) * 0.08, s: k === 'star' ? 0.62 : 0.5 + 0.07 * lvs[i] });   // a higher level is a bigger crate
+      o.position.y = DOCK_FLOOR + 0.02; o.userData.kind = k; o.userData.lv = lvs[i]; cargoModels.push(o);
     });
     cargoBubEl.innerHTML = kinds.map((k, i) => `<div class="cb ${k}" data-i="${i}"><div class="cbb"></div><div class="cbt"></div></div>`).join('');
   }
@@ -2902,8 +2908,20 @@ function refreshCargo(first) {
   const showChest = open && S.cargo && S.cargo.payout && !shipAway();
   if (showChest && !chestModel) { chestModel = place('pirate', 'chest', DOCK.x - DOCK.half - 0.95, -2.7, { r: 0.4, s: 0.9 }); }   // on the sand by the foot of the dock, clear of the crate bubbles
   if (!showChest && chestModel) { scene.remove(chestModel); chestModel = null; }
+  // the next crate or barrel you can buy: a see-through one in its spot, with a price bubble (mockup A)
+  const nb = open && !shipAway() ? nextBox() : null;
+  if ((nb ? nb.kind : '') !== (ghostBox ? ghostBox.userData.kind : '') || (ghostBox && nb && ghostBox.userData.at !== S.cargo.slots.length)) {
+    if (ghostBox) { scene.remove(ghostBox); ghostBox = null; }
+    if (nb) {
+      const q = nextPos(); ghostBox = place('pirate', nb.kind === 'barrel' ? 'barrel' : 'crate', q.x, q.z, { s: 0.57 });
+      ghostBox.position.y = DOCK_FLOOR + 0.02; ghostBox.userData.kind = nb.kind; ghostBox.userData.at = S.cargo.slots.length;
+      ghostBox.traverse(m => { if (m.isMesh) { m.material = ghostMat; m.castShadow = false; } });
+    }
+  }
   renderCargoBubbles();
 }
+let ghostBox = null;
+const ghostMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.45, depthWrite: false });
 function boxIcon(kind, b) {
   if (kind === 'star') return `<span class="cstar">★</span>${itemIcon(S.cargo.star.item)}`;
   const top = Object.entries(b).sort((x, y) => y[1] - x[1])[0];
@@ -2913,10 +2931,12 @@ function renderCargoBubbles() {
   if (!S.cargo) return;
   cargoBubEl.querySelectorAll('.cb').forEach(el => {
     const i = +el.dataset.i, k = el.classList.contains('star') ? 'star' : el.classList.contains('barrel') ? 'barrel' : 'crate';
-    const b = S.cargo.boxes[i] || {}, n = boxCount(b), cap = capOf(k), full = n >= cap;
+    const b = S.cargo.boxes[i] || {}, n = boxCount(b), cap = capOf(k, i), full = n >= cap, lv = S.cargo.slots[i] ? S.cargo.slots[i].lv : 0;
     el.classList.toggle('full', full);
-    el.querySelector('.cbb').innerHTML = `${boxIcon(k, b)}<span class="cbar"><i style="width:${Math.round(100 * n / cap)}%"></i></span><b>${n}/${cap}</b>${full ? '<span class="cok">✓</span>' : ''}`;
+    el.querySelector('.cbb').innerHTML = `${boxIcon(k, b)}<span class="cbar"><i style="width:${Math.min(100, Math.round(100 * n / cap))}%"></i></span><b>${n}/${cap}</b>${full ? '<span class="cok">✓</span>' : ''}${lv ? `<span class="clv">${'<i></i>'.repeat(lv)}</span>` : ''}`;
   });
+  const nb = nextBox(), nx = document.getElementById('cargoNext');
+  if (nb) nx.querySelector('.cbb').innerHTML = `<span class="scoin"></span><b>${nb.cost.toLocaleString()}</b><span class="hdlv${S.level >= nb.level ? ' ok' : ''}">${nb.level}</span>`;
   // the ship's pay, over the chest
   const pay = document.getElementById('cargoPay');
   const p = S.cargo.payout;
@@ -2952,6 +2972,8 @@ function tickCargo(dt) {
   if (near) cargoBubEl.querySelectorAll('.cb').forEach(el => { const p = boxPos(+el.dataset.i); placeBubble(el, p.x, DOCK_FLOOR + 0.75, p.z, 0, cargoLab().sm ? 0 : cargoLab().zig ? (+el.dataset.i % 2 ? -1 : 1) * 30 : (+el.dataset.i % 2 ? 1 : -1) * 44); if (parseFloat(el.style.top) > innerHeight - 100) el.style.display = 'none'; });   // never over the toolbar
   cargoBubEl.classList.toggle('sm', !!cargoLab().sm);
   if (near && cargoLab().focus) { const at = tool === 'rod' ? null : nearCargo(); cargoBubEl.querySelectorAll('.cb').forEach(el => el.classList.toggle('big', +el.dataset.i === at)); }   // staggered so the row doesn't stack up
+  const nx = document.getElementById('cargoNext'); nx.hidden = !(near && ghostBox);
+  if (!nx.hidden) { const q = nextPos(); placeBubble(nx, q.x, DOCK_FLOOR + 0.8, q.z, 0); }
   const pay = document.getElementById('cargoPay');
   if (!pay.hidden && chestModel) placeBubble(pay, chestModel.position.x, chestModel.position.y + 0.9, chestModel.position.z, 0);
   if (!near) pay.style.display = 'none';
@@ -2962,32 +2984,37 @@ function nearCargo() {
   cargoBoxes().forEach((b, i) => { const p = boxPos(i), d = Math.hypot(p.x - player.pos.x, p.z - player.pos.z); if (d < bd) { bd = d; best = i; } });
   return best;
 }
+function nearNextBox() { if (!ghostBox || !onDock(player.pos.x, player.pos.z)) return false; const q = nextPos(); return Math.hypot(q.x - player.pos.x, q.z - player.pos.z) < 1.0; }
 function nearChest() { return chestModel && Math.hypot(chestModel.position.x - player.pos.x, chestModel.position.z - player.pos.z) < 1.4; }
 // --- loading sheet ---
 let cargoAt = 0;
 function openCargo(i) { cargoAt = i; renderCargo(); openSheet('cargoSheet'); }
 function renderCargo() {
-  const kind = cargoBoxes()[cargoAt].kind, b = S.cargo.boxes[cargoAt], n = boxCount(b), cap = capOf(kind);
-  const title = kind === 'star' ? 'Star crate' : kind === 'barrel' ? 'Barrel' : 'Crate';
+  const kind = cargoBoxes()[cargoAt].kind, b = S.cargo.boxes[cargoAt], n = boxCount(b), cap = capOf(kind, cargoAt), slot = S.cargo.slots[cargoAt];
+  const title = kind === 'star' ? 'Star crate' : `${kind === 'barrel' ? 'Barrel' : 'Crate'} <span class="cglv">Level ${slot.lv}<span class="clv">${'<i></i>'.repeat(slot.lv)}${'<i class="off"></i>'.repeat(CARGO.caps.length - slot.lv)}</span></span>`;
   document.getElementById('cgIcon').innerHTML = kind === 'star' ? `<span class="cstar big">★</span>` : svg(kind === 'barrel' ? 'barrel' : 'crate', '#8a5a34', 30);
-  document.getElementById('cgTitle').textContent = title;
-  document.getElementById('cgBar').innerHTML = `<span class="cbar"><i style="width:${Math.round(100 * n / cap)}%"></i></span><b>${n}/${cap}</b>`;
-  document.getElementById('cgHint').innerHTML = kind === 'star' ? `Wants ${S.cargo.star.n} ${ITEMS[S.cargo.star.item].name}. Fill it for a treasure chest!` : kind === 'barrel' ? 'Fish go in barrels. Tap to drop one in, hold to fill it.' : 'Crops go in crates. Tap to drop one in, hold to fill it.';
-  const mine = Object.keys(S.inv).filter(id => ITEMS[id] && S.inv[id] > 0 && fits(kind, id));
+  document.getElementById('cgTitle').innerHTML = title;
+  document.getElementById('cgBar').innerHTML = `<span class="cbar"><i style="width:${Math.min(100, Math.round(100 * n / cap))}%"></i></span><b>${n}/${cap}</b>`;
+  document.getElementById('cgHint').innerHTML = kind === 'star' ? `Wants ${S.cargo.star.n} ${ITEMS[S.cargo.star.item].name}. Fill it for a treasure chest!` : n ? `This one is for ${ITEMS[Object.keys(b).find(k => b[k] > 0)].name} until it\u2019s empty again. Tap to drop one in, hold to fill it.` : kind === 'barrel' ? 'One kind of fish per barrel. Tap to drop one in, hold to fill it.' : 'One kind of crop per crate. Tap to drop one in, hold to fill it.';
+  const mine = Object.keys(S.inv).filter(id => ITEMS[id] && S.inv[id] > 0 && fits(kind, id, b));
   document.getElementById('cgHave').innerHTML = mine.length ? mine.map(id => `<button class="cgt" data-add="${id}">${itemIcon(id)}<b>×${S.inv[id]}</b></button>`).join('')
-    : `<div class="cgnone">${kind === 'star' ? `You don't have any ${ITEMS[S.cargo.star.item].name} yet` : kind === 'barrel' ? 'No fish in your bag' : 'No crops in your bag'}</div>`;
+    : `<div class="cgnone">${kind === 'star' ? `You don't have any ${ITEMS[S.cargo.star.item].name} yet` : n ? 'Nothing more of that kind in your bag' : kind === 'barrel' ? 'No fish in your bag' : 'No crops in your bag'}</div>`;
   const inIt = Object.keys(b).filter(id => b[id] > 0);
   document.getElementById('cgIn').innerHTML = inIt.length ? inIt.map(id => `<button class="cgt in" data-take="${id}">${itemIcon(id)}<b>×${b[id]}</b></button>`).join('') : '<div class="cgnone">Empty</div>';
   const send = document.getElementById('cgSend'), away = shipAway();
   send.disabled = away || !cargoLoaded() || !!S.cargo.payout;
   send.textContent = away ? `The ship is away · back in ${fmtTrip(S.cargo.back - Date.now())}` : S.cargo.payout ? 'Collect your pay first' : 'Send the ship ⛵';
-  const nx = CARGO.holds[S.cargo.hold + 1];
-  document.getElementById('cgUp').hidden = !nx;
+  // level up this crate or barrel: coins + a town level
+  const up = document.getElementById('cgUp'), lu = slot ? CARGO.levelUp[slot.lv - 1] : null;
+  up.hidden = !lu;
+  if (lu) { const lvOK = S.level >= lu.level, coinOK = S.coins >= lu.cost; up.disabled = !lvOK || !coinOK;
+    up.innerHTML = `<b>Level ${slot.lv + 1}</b><small>${!lvOK ? `town level ${lu.level}` : `holds ${CARGO.caps[slot.lv]}`}</small><span class="cgcost"><span class="scoin sm"></span>${lu.cost}</span>`; }
 }
 function fmtTrip(ms) { const s = Math.max(0, Math.ceil(ms / 1000)), mn = Math.ceil(s / 60); return s < 60 ? s + 's' : mn >= 60 ? `${Math.floor(mn / 60)}h ${mn % 60}m` : `${mn}m`; }
 function cargoAdd(id, all) {
   const kind = cargoBoxes()[cargoAt].kind, b = S.cargo.boxes[cargoAt];
-  let room = capOf(kind) - boxCount(b); if (room <= 0) { toast('It’s full'); return; }
+  if (!fits(kind, id, b)) return;
+  let room = capOf(kind, cargoAt) - boxCount(b); if (room <= 0) { toast('It’s full'); return; }
   const k = Math.min(all ? room : 1, invCount(id)); if (k <= 0) return;
   addItem(id, -k); b[id] = (b[id] || 0) + k;
   renderCargo(); renderCargoBubbles(); commit();
@@ -3013,7 +3040,7 @@ document.getElementById('cgSend').addEventListener('click', () => {
   const starFull = boxCount(S.cargo.boxes[S.cargo.boxes.length - 1]) >= S.cargo.star.n;
   S.cargo.payout = { coins: Math.max(5, Math.round(value * CARGO.payMult)), extra: starFull ? chestPrize() : null };
   S.cargo.boxes = S.cargo.boxes.map(() => ({}));
-  const ms = settings.debug && settings.fastCrops ? CARGO.debugTripSeconds * 1000 : holdOf().tripMinutes * 60000;
+  const ms = settings.debug && settings.fastCrops ? CARGO.debugTripSeconds * 1000 : CARGO.tripMinutes * 60000;
   S.cargo.back = Date.now() + ms;
   document.getElementById('cargoSheet').hidden = true;
   audio.shipBell(); shipAnim = { t: 0, dur: 7, from: SHIP_AT, to: SHIP_OUT, done: () => { merchant.visible = false; } };
@@ -3034,26 +3061,27 @@ function collectCargo() {
   refreshCargo(); commit();
   toast(`+${p.coins.toLocaleString()} coins${p.extra ? ` and ${p.extra.n} × ${ITEMS[p.extra.item].name}` : ''}!`);
 }
-// --- bigger hold: coins + town level, like the lots ---
-document.getElementById('cgUp').addEventListener('click', () => { renderHold(); openSheet('holdSheet'); });
+// --- level up a crate or barrel, and buy the next one for the dock (coins + town level, like the lots) ---
+document.getElementById('cgUp').addEventListener('click', () => {
+  const slot = S.cargo.slots[cargoAt], lu = slot && CARGO.levelUp[slot.lv - 1]; if (!lu || S.level < lu.level || S.coins < lu.cost) return;
+  audio.play('buy'); S.coins -= lu.cost; slot.lv++; refreshCargo(); renderCargo(); commit();
+  toast(`${slot.kind === 'barrel' ? 'Barrel' : 'Crate'} level ${slot.lv}! It holds ${CARGO.caps[slot.lv - 1]} now.`);
+});
 function renderHold() {
-  const cur = S.cargo.hold, nx = CARGO.holds[cur + 1];
-  document.getElementById('hdList').innerHTML = CARGO.holds.map((h, i) => {
-    const pics = svg('crate', '#8a5a34', 20).repeat(h.crates) + svg('barrel', '#8a5a34', 20).repeat(h.barrels);
-    const right = i <= cur ? '<b class="hdyes">✓ yours</b>' : `<span class="scoin sm"></span><b>${h.cost.toLocaleString()}</b><span class="hdlv${S.level >= h.level ? ' ok' : ''}">${h.level}</span>`;
-    return `<div class="hdrow${i <= cur ? ' mine' : ''}"><span class="hdpics">${pics}</span><b class="hdcap">×${h.cap}</b><span class="hdr">${right}</span></div>`;
-  }).join('');
-  const b = document.getElementById('hdBuy');
-  if (!nx) { b.disabled = true; b.textContent = 'Biggest hold'; return; }
-  const lvOK = S.level >= nx.level, coinOK = S.coins >= nx.cost;
+  const nb = nextBox(), b = document.getElementById('hdBuy'); if (!nb) { b.disabled = true; return; }
+  const name = nb.kind === 'barrel' ? 'barrel' : 'crate';
+  document.getElementById('hdTitle').textContent = `A new ${name}`;
+  document.getElementById('hdGreet').textContent = `One more ${name} for the dock. It starts at level 1 and holds ${CARGO.caps[0]} ${nb.kind === 'barrel' ? 'fish' : 'crops'} of one kind.`;
+  document.getElementById('hdList').innerHTML = `<div class="hdrow"><span class="hdpics">${svg(name, '#8a5a34', 30)}</span><b class="hdcap">×${CARGO.caps[0]}</b><span class="hdr"><span class="scoin sm"></span><b>${nb.cost.toLocaleString()}</b><span class="hdlv${S.level >= nb.level ? ' ok' : ''}">${nb.level}</span></span></div>`;
+  const lvOK = S.level >= nb.level, coinOK = S.coins >= nb.cost;
   b.disabled = !lvOK || !coinOK;
-  b.textContent = !lvOK ? `Reach town level ${nx.level}` : !coinOK ? `Need ${(nx.cost - S.coins).toLocaleString()} more` : `Upgrade for ${nx.cost.toLocaleString()}`;
+  b.textContent = !lvOK ? `Reach town level ${nb.level}` : !coinOK ? `Need ${(nb.cost - S.coins).toLocaleString()} more` : `Buy for ${nb.cost.toLocaleString()}`;
 }
 document.getElementById('hdBuy').addEventListener('click', () => {
-  const nx = CARGO.holds[S.cargo.hold + 1]; if (!nx || S.level < nx.level || S.coins < nx.cost) return;
-  audio.play('buy'); S.coins -= nx.cost; S.cargo.hold++; ensureCargo(); refreshCargo(); commit();
+  const nb = nextBox(); if (!nb || S.level < nb.level || S.coins < nb.cost) return;
+  audio.play('buy'); S.coins -= nb.cost; S.cargo.slots.push({ kind: nb.kind, lv: 1 }); ensureCargo(); refreshCargo(); commit();
   document.getElementById('holdSheet').hidden = true;
-  toast('Bigger hold! More crates and barrels on the dock.');
+  toast(`A new ${nb.kind === 'barrel' ? 'barrel' : 'crate'} on the dock!`);
 });
 
 // ---------- dig spots (decision 73): a few sparkly mounds each day, dug up with the shovel ----------
@@ -3483,7 +3511,7 @@ document.querySelectorAll('[data-dbg]').forEach(b => b.addEventListener('click',
     if (!l) toast('Every lot is bought');
     else { const s = lotSignPos(); player.pos.set(s.x + 1.1, 0, s.z - 1.2); toast(`Next lot: ${LOT_NAMES[l.id]}, ${lotPrice().toLocaleString()} coins, level ${lotLevel()}`); }
   }
-  if (k === 'cargofill') { ensureCargo(); if (S.level < CARGO.openLevel) { S.level = CARGO.openLevel; S.xp = Math.max(S.xp, 0); renderLevel(); } cargoBoxes().forEach((b, i) => { if (b.kind === 'star') { S.cargo.boxes[i] = { [S.cargo.star.item]: S.cargo.star.n }; } else S.cargo.boxes[i] = { [b.kind === 'crate' ? 'turnip' : 'sunfish']: holdOf().cap }; }); refreshCargo(); commit(); toast('Hold filled'); }
+  if (k === 'cargofill') { ensureCargo(); if (S.level < CARGO.openLevel) { S.level = CARGO.openLevel; S.xp = Math.max(S.xp, 0); renderLevel(); } cargoBoxes().forEach((b, i) => { if (b.kind === 'star') { S.cargo.boxes[i] = { [S.cargo.star.item]: S.cargo.star.n }; } else S.cargo.boxes[i] = { [b.kind === 'crate' ? 'turnip' : 'sunfish']: capOf(b.kind, i) }; }); refreshCargo(); commit(); toast('Hold filled'); }
   if (k === 'cargoback') { ensureCargo(); if (S.cargo.back) { S.cargo.back = Date.now() - 1; shipAnim = null; merchant.visible = false; commit(); toast('The ship is on its way back'); } else toast('The ship is at the dock'); }
   if (k === 'tools') { S.tools = [...GEAR_ORDER]; if (S.level < 3) { S.level = 3; renderLevel(); } commit(); renderFarmTray(); refreshDig(); toast('All tools added'); }
   if (k === 'digreset') { S.dig = null; refreshDig(); commit(); toast('New dig spots'); }

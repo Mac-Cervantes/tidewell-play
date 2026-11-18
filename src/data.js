@@ -1,7 +1,7 @@
 // Tidewell game data. Everything tunable lives here as plain tables so it can be
 // exported to JSON for the Unity version later (see tools/export-data.mjs).
 
-export const VERSION = '0.1.81';
+export const VERSION = '0.1.82';
 export const VERSION_LABEL = 'BETA v' + VERSION;
 
 // Rarity tiers (decision 36). `weight` is the base chance per bite with worms.
@@ -246,7 +246,14 @@ export const DIG = { perDay: 3 };   // dig spots for the shovel, new ones each d
 export const CARGO = {
   openLevel: 4,
   payMult: 1.5,             // the ship sells your cargo for this much more than Higgins pays
-  holds: [                  // the hold you have, then each upgrade
+  // Since v0.1.82 (decision 90): crates and barrels are bought one at a time and each has its own level. Numbers are a first pass (Mac: adjust later).
+  start: ['crate', 'crate', 'barrel'],             // free with the ship
+  caps: [5, 10, 15],                                // what a level 1 / 2 / 3 crate or barrel holds (one kind of thing each)
+  levelUp: [{ cost: 200, level: 6 }, { cost: 400, level: 9 }],   // to level 2, to level 3 (coins + town level), per crate or barrel
+  more: [{ kind: 'crate', cost: 200, level: 5 }, { kind: 'barrel', cost: 300, level: 6 }, { kind: 'crate', cost: 600, level: 8 },
+    { kind: 'barrel', cost: 800, level: 10 }, { kind: 'barrel', cost: 1000, level: 12 }],   // the next one on the dock, in this order
+  tripMinutes: 60,
+  holds: [                  // before v0.1.82: bundles. Only used to carry old saves over.
     { crates: 2, barrels: 1, cap: 10, cost: 0,    level: 4,  tripMinutes: 60 },
     { crates: 3, barrels: 2, cap: 10, cost: 800,  level: 6,  tripMinutes: 60 },
     { crates: 3, barrels: 2, cap: 20, cost: 2000, level: 9,  tripMinutes: 90 },

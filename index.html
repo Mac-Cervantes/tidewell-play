@@ -375,7 +375,7 @@
 @keyframes sbpop { from { transform: scale(.3) translateY(20px); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes sbbob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
 
-#cargoBubbles .cb, #cargoPay { position: fixed; z-index: 5; transform: translate(-50%, -100%); pointer-events: none; }
+#cargoBubbles .cb, #cargoPay, #cargoNext { position: fixed; z-index: 5; transform: translate(-50%, -100%); pointer-events: none; }
 .cb .cbb { display: flex; align-items: center; gap: 4px; background: #fffdf5; border: 2.5px solid #2b2140; border-radius: 14px; padding: 2px 7px 2px 3px; white-space: nowrap; font-size: 14px; color: #2b2140; box-shadow: 0 3px 0 rgba(43,33,64,.2); }
 .cb .cbb .ic { transform: scale(.78); margin: -4px -3px; }
 .cb .cbt { width: 0; height: 0; margin: 0 auto; border-left: 7px solid transparent; border-right: 7px solid transparent; border-top: 8px solid #2b2140; }
@@ -384,6 +384,12 @@
 .cb.pay .cbb { font-size: 18px; padding: 4px 10px; animation: sbbob 1.6s ease-in-out infinite; }
 .cbar { display: inline-block; width: 30px; height: 7px; border-radius: 4px; background: #e4dccd; overflow: hidden; } .cbar i { display: block; height: 100%; background: #5aa54a; border-radius: 4px; }
 .cb.barrel .cbar i { background: #3e8ee8; }
+.clv { display: inline-flex; gap: 2px; align-items: center; } .clv i { width: 5px; height: 5px; border-radius: 50%; background: #2b2140; display: block; } .clv i.off { background: #d8cfbd; }
+#cargoBubbles.sm .cb:not(.big) .clv { position: absolute; left: 50%; bottom: -1px; transform: translateX(-50%); } #cargoBubbles.sm .cb:not(.big) .clv i { width: 4px; height: 4px; }
+#cargoBubbles.sm .cb:not(.big) .cbb { padding-bottom: 7px; }
+.cb.next .cbb { font-size: 17px; padding: 3px 8px 3px 5px; gap: 6px; position: relative; } .cb.next .scoin { width: 20px; height: 20px; border-radius: 50%; background: #f4c542; border: 3px solid #b8860b; box-sizing: border-box; display: inline-block; } .cb.next .hdlv { width: 24px; height: 24px; font-size: 13px; position: relative; }
+.cglv { font-size: 13px; font-weight: 600; color: #5f5472; margin-left: 6px; display: inline-flex; align-items: center; gap: 5px; } .cglv .clv i { width: 14px; height: 7px; border-radius: 4px; background: #5aa54a; border: 1.5px solid #2b2140; } .cglv .clv i.off { background: #efe8d8; }
+.cgup { display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.1; padding: 4px 12px !important; } .cgup small { font-size: 11px; font-weight: 600; color: #5f5472; } .cgup .cgcost { display: inline-flex; align-items: center; gap: 3px; font-size: 13px; } .cgup:disabled { opacity: .55; } .cgup .scoin { width: 14px; height: 14px; border-radius: 50%; background: #f4c542; border: 2.5px solid #b8860b; box-sizing: border-box; display: inline-block; }
 #cargoBubbles.sm .cb:not(.big) .cbb { position: relative; flex-direction: column; gap: 0; padding: 0 3px 4px; border-radius: 11px; border-width: 2px; } #cargoBubbles.sm .cb:not(.big) .cbb > b { display: none; } #cargoBubbles.sm .cb:not(.big) .cbar { width: 24px; height: 6px; }
 #cargoBubbles.sm .cb:not(.big) .cbb .ic { transform: scale(.7); margin: -5px -4px -6px; } #cargoBubbles.sm .cb:not(.big) .cstar { position: absolute; left: -8px; top: -10px; font-size: 15px; } #cargoBubbles.sm .cb:not(.big) .cok { position: absolute; right: -7px; top: -9px; font-size: 13px; }
 #cargoBubbles.sm .cb:not(.big) .cbt { border-left-width: 5px; border-right-width: 5px; border-top-width: 6px; }
@@ -520,13 +526,14 @@
 </div>
 <div id="holdSheet" class="sheet low" hidden>
   <div class="card cgcard">
-    <div class="shophead"><h2>Bigger hold</h2><button class="xbtn" data-close aria-label="Close"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2b2140" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
-    <p class="greet">More crates and barrels, or bigger ones. Each step costs coins and needs a town level.</p>
+    <div class="shophead"><h2 id="hdTitle">A new crate</h2><button class="xbtn" data-close aria-label="Close"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2b2140" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+    <p class="greet" id="hdGreet"></p>
     <div id="hdList"></div>
-    <button id="hdBuy" class="bigbtn">Upgrade</button>
+    <button id="hdBuy" class="bigbtn">Buy</button>
   </div>
 </div>
 <div id="cargoBubbles" hidden aria-hidden="true"></div>
+<div id="cargoNext" class="cb next" hidden aria-hidden="true"><div class="cbb"></div><div class="cbt"></div></div>
 <div id="cargoPay" class="cb pay" hidden aria-hidden="true"><div class="cbb"></div><div class="cbt"></div></div>
 <div id="lotSheet" class="sheet low" hidden>
   <div class="card lotcard">
