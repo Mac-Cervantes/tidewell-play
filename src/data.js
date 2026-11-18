@@ -1,7 +1,7 @@
 // Tidewell game data. Everything tunable lives here as plain tables so it can be
 // exported to JSON for the Unity version later (see tools/export-data.mjs).
 
-export const VERSION = '0.1.79';
+export const VERSION = '0.1.80';
 export const VERSION_LABEL = 'BETA v' + VERSION;
 
 // Rarity tiers (decision 36). `weight` is the base chance per bite with worms.
@@ -380,3 +380,8 @@ export const PETS = {
   // 2 points fill a paw, 5 paws and it's yours. Points never go down.
   tame: { paws: 5, perPaw: 2, treatsPerDay: 3, petsPerDay: 1 },
 };
+
+// Fertilizer (decision 89, mockup A): bought from Rosa with coins, dragged over crops from Farm tools; one bag takes `minutes` off one crop.
+// Priced a little above what a plot earns in that time, so it buys time and can't be looped for coins.
+export const FERT = { minutes: 10, pack: 5, buy: 100 };
+ITEMS.fertilizer = { name: 'Fertilizer', kind: 'fert', rarity: 'common', price: 0, buy: FERT.buy / FERT.pack };

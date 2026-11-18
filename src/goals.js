@@ -31,6 +31,7 @@ function farmStep(id, spot) {   // Farm tools → the right tool → drag it ove
 }
 const tillStep = () => farmStep('hoe', () => ({ x: A.player.pos.x, z: A.player.pos.z + 1.3 }));
 const seedStep = () => isOn(slot('seeds')) ? null : slot('seeds');
+const lab = () => (typeof window !== 'undefined' && window.__goalLab) || {};
 const RULES = {
   hello:   { on: 'talk', use: ['Talk'], at: () => npcAt('higgins') },
   plant:   { poll: (S) => S.plots.some(p => p.crop), use: ['Plant'],
@@ -51,7 +52,8 @@ const RULES = {
              ui: () => vis('orders') ? document.querySelector('#orders [data-ofill]:not([disabled])') : null },
   // the turnips take 20 minutes and this goal comes up after about five, so while it's the goal anything growing ripens in a moment
   // (a playtester was asked to harvest and couldn't; replanted ones ripen the same way). Mac, v0.1.79
-  harvest: { on: 'harvest', use: ['Harvest', 'Plant'], tick: () => A.ripen(),
+  harvest: { on: 'harvest', use: ['Harvest', 'Plant'], tick: () => A.ripen(lab().wait ? lab().wait * 1000 : 2500),
+             wait: () => lab().wait ? (A.ripeIn() || 0) : 0,   // while they grow: no line, no hand, just a timer on the card
              ui: (S) => S.plots.some(q => q.crop) ? null : S.plots.length ? seedStep() : tillStep(),   // nothing growing: back to planting
              at: (S) => { const p = S.plots.find(q => q.crop) || S.plots[0]; return p ? plotAt(p) : null; } },
 };
@@ -108,7 +110,7 @@ function renderCard() {
   const d = cur(), show = !!d;
   if (card.hidden === show) card.hidden = !show;
   if (!d || cardKey === d.id) return;
-  cardKey = d.id;
+  cardKey = d.id; waitKey = '';
   card.innerHTML = `<span class="gtop">${STAR(20)}<b>${d.title}</b></span>
     <span class="gmid">${A.svg(d.pic, '#2b2140', 24)}<span class="gbar"></span><b>0/1</b></span>
     <span class="gprize">Prize: ${prizeHTML(d.prize)}</span>`;
@@ -243,7 +245,20 @@ export function frame(dt) {
   if (!g.started) { g.started = 1; if (r.start) r.start(S, g); }
   if ((r.poll && r.poll(S, g)) || (r.skip && r.skip())) { hideAll(); complete(); return; }
   if (r.tick) r.tick(S, g);
+  const w = r.wait ? r.wait(S, g) : 0;
+  cardWait(w);
+  if (w > 0) { waited = true; quiet = lab().line === false; hideAll(); tickDone(); return; }
+  if (waited) { waited = false; card.classList.remove('gready'); void card.offsetWidth; card.classList.add('gready'); A.audio.play('eggPop'); }
+  if (quiet) { hideAll(); tickDone(); return; }   // the line stays away until you tap the card
   guide(dt, r); tickDone();
+}
+let waited = false, quiet = false, waitKey = '';
+function cardWait(ms) {   // the goal card's middle row: a clock and time left while something grows, the usual bar otherwise
+  const mid = card.querySelector('.gmid'); if (!mid) return;
+  const sec = Math.ceil(ms / 1000), key = ms > 0 ? 't' + sec : 'bar';
+  if (key === waitKey) return; waitKey = key;
+  card.classList.toggle('gwait', ms > 0);
+  mid.querySelector('b').textContent = ms > 0 ? `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}` : '0/1';
 }
 
 export function init(api) {
@@ -251,7 +266,7 @@ export function init(api) {
   const css = document.createElement('style'); css.textContent = CSS; document.head.appendChild(css);
   card = document.createElement('button'); card.id = 'goalCard'; card.className = 'panel'; card.hidden = true; card.setAttribute('aria-label', 'Your goal');
   byId('seasonTxt').after(card);
-  card.addEventListener('click', () => { const d = cur(); if (d) A.toast(d.hint); });
+  card.addEventListener('click', () => { const d = cur(); quiet = false; if (d) A.toast(card.classList.contains('gwait') ? 'Your turnips are growing. Go explore! The card rings when they\u2019re ready.' : d.hint); });
   fx = document.createElement('div'); fx.id = 'goalFx';
   fx.innerHTML = `<img id="goalHand" src="${HAND_SRC}" alt="" hidden><div id="goalArrow" hidden><svg width="44" height="52" viewBox="0 0 44 52"><path d="M14 4h16v22h10L22 48 4 26h10z" fill="#ffd84d" stroke="#2b2140" stroke-width="3.5" stroke-linejoin="round"/></svg></div>`;
   document.body.appendChild(fx); hand = byId('goalHand'); arrow = byId('goalArrow');
@@ -273,6 +288,11 @@ body:has(#decorTray:not([hidden])) #goalCard { display: none; }   /* the decorat
 #goalCard .gtop { display: flex; align-items: flex-start; gap: 6px; font-size: 15px; line-height: 1.15; } #goalCard .gtop svg { flex: none; }
 #goalCard .gmid { display: flex; align-items: center; gap: 7px; } #goalCard .gmid b { font-size: 16px; }
 #goalCard .gbar { flex: 1; height: 11px; border-radius: 7px; border: 2px solid #2b2140; background: #efe8d8; box-sizing: border-box; }
+#goalCard.gwait .gbar { background: repeating-linear-gradient(-45deg, #efe8d8 0 6px, #d9ccb0 6px 12px); background-size: 34px 100%; animation: gwait 1.2s linear infinite; } #goalCard.gwait .gmid b { font-variant-numeric: tabular-nums; }
+#goalCard.gready { animation: gready .5s ease-in-out 6; }
+@keyframes gwait { to { background-position: 17px 0; } }
+@keyframes gready { 50% { background: #d9f5c8; box-shadow: 0 0 0 5px rgba(90,165,74,.55); transform: scale(1.05); } }
+@media (prefers-reduced-motion: reduce) { #goalCard.gwait .gbar, #goalCard.gready { animation: none; } }
 #goalCard .gprize { font-size: 12.5px; color: #6b5a8a; display: flex; align-items: center; gap: 4px; } #goalCard .gprize b { color: #2b2140; }
 .gcoin { display: inline-block; width: 14px; height: 14px; border-radius: 50%; background: #f4c542; border: 2.5px solid #b8860b; box-sizing: border-box; }
 .gcoin.big { width: 24px; height: 24px; border-width: 3px; vertical-align: -3px; margin-right: 6px; }

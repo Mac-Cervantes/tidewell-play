@@ -4,7 +4,7 @@ import { GLTFLoader } from '../lib/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from '../lib/addons/utils/SkeletonUtils.js';
 import * as store from './store.js';   // STORE: the walk-in general store (the inside loads later from interior.js)
 import { mergeVertices } from '../lib/addons/utils/BufferGeometryUtils.js';
-import { VERSION_LABEL, RARITY, FISH, CROPS, CROP_ORDER, ITEMS, SHOP, DEBUG, BAIT, BAIT_ORDER, DECOR, DECOR_ORDER, STARTER_KIT, ORDER_FOLK, ORDERS, makeOrder, orderFolk, CARGO, TOOLS as GEAR, TOOL_ORDER as GEAR_ORDER, CLEAR_NEEDS, HIT_SECONDS, DIG, XP, LEVELS, xpInto, levelFor, rankFor, unlockLevel, rollFish, seasonInfo, timeOfDay, SIGHTS, rollSize, RODS } from './data.js';
+import { FERT, VERSION_LABEL, RARITY, FISH, CROPS, CROP_ORDER, ITEMS, SHOP, DEBUG, BAIT, BAIT_ORDER, DECOR, DECOR_ORDER, STARTER_KIT, ORDER_FOLK, ORDERS, makeOrder, orderFolk, CARGO, TOOLS as GEAR, TOOL_ORDER as GEAR_ORDER, CLEAR_NEEDS, HIT_SECONDS, DIG, XP, LEVELS, xpInto, levelFor, rankFor, unlockLevel, rollFish, seasonInfo, timeOfDay, SIGHTS, rollSize, RODS } from './data.js';
 import { paintSkin, SKIN, HAIR_COLORS, CLOTH } from './look.js';
 import { HAIR3D, hairFor } from './hair3d.js';
 import { wearList, wearFor, hairUnderHat, HATS } from './wear3d.js';
@@ -343,14 +343,16 @@ function furlSails(ship, k) {
   });
 }
 // the cargo ship ties up across the end of the dock, bow to the right (Mac, v0.1.60, mockup A); it sails in from the left and out to the right
-const SHIP_AT = { x: 2.4, z: -13.2 }, SHIP_IN = { x: -34, z: -13.2 }, SHIP_OUT = { x: 36, z: -13.2 }, SHIP_ROT = Math.PI / 2;
+// extra dock sections (2.12 m each) beyond the first four; everything at the dock's end moves out with them
+const DOCK_MORE = ((typeof window !== 'undefined' && window.__cargoLab) || {}).extra || 0, DOCK_ADD = DOCK_MORE * 2.12;
+const SHIP_AT = { x: 2.4, z: -13.2 - DOCK_ADD }, SHIP_IN = { x: -34, z: -13.2 - DOCK_ADD }, SHIP_OUT = { x: 36, z: -13.2 - DOCK_ADD }, SHIP_ROT = Math.PI / 2;
 // the ship's hull at the dock, for casts (you cast off the sides of the dock, not into the ship)
 function shipBlocks(px, pz, x, z) {   // does a cast from (px, pz) to (x, z) land on or fly over the ship?
-  if (!merchant || !merchant.visible || shipAnim || z > -11.0) return false;
-  if (z > -15.6 && Math.abs(x - SHIP_AT.x) < 4.4) return true;
+  if (!merchant || !merchant.visible || shipAnim || z > -11.0 - DOCK_ADD) return false;
+  if (z > -15.6 - DOCK_ADD && Math.abs(x - SHIP_AT.x) < 4.4) return true;
   const t = (SHIP_AT.z - pz) / (z - pz); return t > 0 && t < 1 && Math.abs(px + (x - px) * t - SHIP_AT.x) < 4.4;
 }
-const DOCK = { x: 2.4, half: 0.97, zNear: -3.2, zFar: -11.1 };
+const DOCK = { x: 2.4, half: 0.97, zNear: -3.2, zFar: -11.1 - DOCK_ADD };
 function onDock(x, z) { return Math.abs(x - DOCK.x) < DOCK.half && z <= DOCK.zNear && z >= DOCK.zFar; }
 // the fence between your land and the wilds; it moves back each time you buy a lot (decision 69, layout D)
 const FENCE_Z0 = 7.55;
@@ -436,9 +438,9 @@ function buildWorld() {
 
   // --- harbor ---
   const deckY = WATER_Y - 0.02;
-  for (let i = 0; i < 4; i++) dockParts.push(widenDock(place('pirate', 'structure-platform-dock', DOCK.x, -4.4 - i * 2.12, { y: deckY, r: 0 })));
+  for (let i = 0; i < 4 + DOCK_MORE; i++) dockParts.push(widenDock(place('pirate', 'structure-platform-dock', DOCK.x, -4.4 - i * 2.12, { y: deckY, r: 0 })));
   const fx = DOCK.x + 0.95;
-  const flag = place('pirate', 'flag-high-pennant', fx, -10.9, { y: 0, s: 0.8 });
+  const flag = place('pirate', 'flag-high-pennant', fx, -10.9 - DOCK_ADD, { y: 0, s: 0.8 });
   scene.updateMatrixWorld(true); flag.position.y = floorY(fx, -10.9);
   // rowboats pulled up on the shore, side by side (Mac)
   for (const [n, x, z, r] of [['boat-row-large', -9.6, -3.75, 0.1], ['boat-row-small', -7.9, -3.7, -0.12]]) {
@@ -1008,6 +1010,7 @@ const ICON = {
   bobber: '<path d="M12 2v4"/><circle cx="12" cy="13" r="6"/><path d="M6 13h12"/>',
   reel: '<circle cx="11" cy="12" r="6.5"/><circle cx="11" cy="12" r="2"/><path d="M17.5 12H21"/><path d="M21 9.5v5"/>',
   shears: '<path d="M12 12.5L8 3M12 12.5L16 3"/><circle cx="8.5" cy="17.5" r="3.2"/><circle cx="15.5" cy="17.5" r="3.2"/><path d="M12 12.5L9.6 14.6M12 12.5l2.4 2.1"/>',
+  fert: '<path d="M8 8c-2.5 3-4 6.5-3.5 10 .3 2 1.800 3 3.500 3h8c1.700 0 3.200-1 3.500-3 .5-3.500-1-7-3.500-10z"/><path d="M8.500 8c.6-1.500.2-3-.5-4.500 1.300.6 2.600.8 4 .8s2.700-.2 4-.8c-.7 1.500-1.100 3-.5 4.500"/><path d="M12 18c0-2.500.8-4 2.600-5 0 2.500-.8 4-2.600 5z"/>',
   can: '<path d="M5 10h10v8a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2z"/><path d="M15 13l5-4.5"/><path d="M7 10V8a3 3 0 0 1 6 0v2"/><path d="M19.5 6.5l1 -1M21 9l1.3-.3"/>',
 };
 const svg = (k, c = '#2b2140', sz = 28, w = 2.2) => `<svg width="${sz}" height="${sz}" viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k]}</svg>`;
@@ -1590,11 +1593,12 @@ const FARM_TOOLS = {
   hoe: { name: 'Hoe', icon: 'hoe', sub: 'till' },
   shears: { name: 'Shears', icon: 'shears', sub: 'harvest' },
   can: { name: 'Watering can', short: 'Can', icon: 'can', sub: 'water' },
+  fert: { name: 'Fertilizer', icon: 'fert', sub: `${FERT.minutes} min faster`, bag: 'fertilizer' },   // shows while you have bags (bought from Rosa)
   shovel: { name: 'Shovel', icon: 'shovel', sub: 'dig spots', gear: true },
   saw: { name: 'Saw', icon: 'saw', sub: 'trees · logs', gear: true, tap: 'Walk up to a tree or log and tap Clear to use the saw.' },
   pick: { name: 'Pickaxe', icon: 'pick', sub: 'big rocks', gear: true, tap: 'Walk up to a big rock and tap Clear to use the pickaxe.' },
 };
-const FARM_ORDER = ['hoe', 'shears', 'can', 'shovel', 'saw', 'pick'];
+const FARM_ORDER = ['hoe', 'shears', 'can', 'fert', 'shovel', 'saw', 'pick'];
 const WATER_MS = 60000;            // watering takes this much off the grow time, once per growth stage
 const FLOAT = 0.35;                // how high you float while the farm tools are out (m)
 // mode: off -> tray (floating, picking) -> ready (tool overhead) -> drag (dangling under your finger) -> return (floating home) -> land -> off
@@ -1602,15 +1606,15 @@ const farm = { mode: 'off', lift: 0, t: 0, P: new THREE.Vector3(), from: new THR
   foot: new THREE.Vector3(), footO: new THREE.Vector3(), lastG: null, done: new Set(), got: 0, n: 0, upright: 1, retDur: 0.8 };
 const farmTray = document.getElementById('farmTray');
 // the tool you used last (null until you've picked one); the hotbar shows shears until then
-function farmPicked() { return FARM_TOOLS[S.farmTool] ? S.farmTool : null; }
+function farmPicked() { const t = FARM_TOOLS[S.farmTool]; return t && !(t.bag && !invCount(t.bag)) ? S.farmTool : null; }
 function farmSel() { return farmPicked() || 'shears'; }
 function renderFarmTray() {
   const show = (farm.mode === 'tray' || farm.mode === 'ready') && !decor.on;
   farmTray.hidden = !show; if (!show) return;
   const sel = farm.mode === 'ready' ? farmPicked() : null;   // highlighted = the tool in your hands
   // tools you don't own yet stay out of the tray; it fills up as you buy them (Mac, v0.1.70)
-  farmTray.querySelector('.srow').innerHTML = FARM_ORDER.filter(id => !(FARM_TOOLS[id].gear && !hasTool(id))).map(id => { const t = FARM_TOOLS[id];
-    const locked = t.gear && !hasTool(id), tag = locked ? `<span class="slock">${svg('lock', '#fff', 10)}${GEAR[id].price}</span>` : '';
+  farmTray.querySelector('.srow').innerHTML = FARM_ORDER.filter(id => !(FARM_TOOLS[id].gear && !hasTool(id)) && !(FARM_TOOLS[id].bag && !invCount(FARM_TOOLS[id].bag))).map(id => { const t = FARM_TOOLS[id];
+    const locked = t.gear && !hasTool(id), tag = t.bag ? `<b>${invCount(t.bag)}</b>` : locked ? `<span class="slock">${svg('lock', '#fff', 10)}${GEAR[id].price}</span>` : '';
     return `<button class="schip${id === sel ? ' on' : ''}${locked ? ' locked' : ''}" data-farm="${id}" aria-pressed="${id === sel}" aria-label="${t.name}: ${t.sub}">${tag}${svg(t.icon, '#2b2140', 26)}<span class="sn">${t.short || t.name}</span><span class="st">${t.sub}</span></button>`; }).join('');
 }
 farmTray.addEventListener('click', (e) => {
@@ -1677,6 +1681,7 @@ function farmLetGo() {
   const k = farmSel();
   if (k === 'shears' && farm.got) toast(`Harvested ${farm.got} crop${farm.got > 1 ? 's' : ''}`);
   else if (k === 'can' && farm.n) toast(`Watered ${farm.n} plant${farm.n > 1 ? 's' : ''}: 1 minute sooner each`);
+  else if (farm.fert) { toast(invCount('fertilizer') ? `Fertilized ${farm.fert} crop${farm.fert > 1 ? 's' : ''}: ${FERT.minutes} minutes sooner each` : 'That was your last bag. Rosa sells more fertilizer.'); farm.fert = 0; renderFarmTray(); }
   else if (k === 'hoe' && farm.n) toast(`Tilled ${farm.n} plot${farm.n > 1 ? 's' : ''}`);
   if (farm.n || farm.got) { renderHotbar(); commit(); }
 }
@@ -1710,6 +1715,12 @@ function farmApply(c, k) {
     p.save.plantedAt -= WATER_MS; p.save.watered = stageOf(p) === st ? st : null; syncCrop(p); setWet(p);
     damageText(p.g.position.clone().setY(p.g.position.y + 0.8), '-1m'); addSplash(c.x + 0.5, c.z + 0.5, true);
     farm.n++; buzz(); audio.play('water'); return true;
+  }
+  if (kind === 'fert') {   // one bag per crop: it grows FERT.minutes sooner
+    if (!p || !p.save.crop || p.grown || !invCount('fertilizer')) return false;
+    addItem('fertilizer', -1); p.save.plantedAt -= FERT.minutes * 60000; p.save.watered = null; syncCrop(p);
+    damageText(p.g.position.clone().setY(p.g.position.y + 0.8), `-${FERT.minutes}m`);
+    farm.n++; farm.fert = (farm.fert || 0) + 1; buzz(); audio.play('plant'); return true;
   }
   if (kind === 'shovel') {
     const i = S.dig ? S.dig.spots.findIndex(sp => !sp.done && sp.x === c.x && sp.z === c.z) : -1;
@@ -1745,7 +1756,7 @@ function setRows(p, mat) { for (let i = 1; i <= 3; i++) if (p.g.children[i]) p.g
 // tool held overhead (world space, follows the hands)
 const farmToolMesh = {};
 // where each tool is held, in the tool's own space: the shears' rings, the can's handle, low on the hoe's shaft
-const TOOL_GRIP = { shears: [0, 0.02, 0], can: [0, 0, 0], hoe: [0.074, 0.01, 0], shovel: [0.074, 0.01, 0] };
+const TOOL_GRIP = { shears: [0, 0.02, 0], can: [0, 0, 0], fert: [0, 0, 0], hoe: [0.074, 0.01, 0], shovel: [0.074, 0.01, 0] };
 let CAN_PICK = 'level';
 function makeFarmTools() {
   const m = (geo, color, x, y, z) => { const o = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color, roughness: 0.5 })); o.position.set(x, y, z); o.castShadow = true; return o; };
@@ -1774,7 +1785,14 @@ function makeFarmTools() {
   const sshaft = m(new THREE.CylinderGeometry(0.016, 0.016, 0.8, 8), 0x8a5a34, 0, 0.3, 0); sshaft.rotation.z = 0.25; shv.add(sshaft);
   const blade = m(new THREE.BoxGeometry(0.15, 0.2, 0.025), 0x9aa3ad, -0.11, 0.76, 0); blade.rotation.z = 0.25; shv.add(blade);
   const tip = m(new THREE.ConeGeometry(0.075, 0.08, 4), 0x9aa3ad, -0.135, 0.88, 0); tip.rotation.z = 0.25; tip.scale.z = 0.2; shv.add(tip);
-  for (const [k, g] of [['shears', sh], ['can', can], ['hoe', hoe], ['shovel', shv]]) { g.visible = false; scene.add(g); farmToolMesh[k] = g; }
+  // fertilizer sack: held by its tied neck, tipped over so it pours
+  const fert = new THREE.Group(), fb = new THREE.Group(); fert.add(fb);
+  const sack = m(new THREE.SphereGeometry(0.15, 10, 8), 0xc98f4e, 0, 0.2, 0); sack.scale.set(1, 1.2, 0.85); sack.material.flatShading = true; fb.add(sack);
+  fb.add(m(new THREE.CylinderGeometry(0.035, 0.07, 0.09, 8), 0xe0b074, 0, 0.03, 0));
+  const tie = m(new THREE.TorusGeometry(0.045, 0.012, 6, 10), 0x8a5a34, 0, 0.035, 0); tie.rotation.x = Math.PI / 2; fb.add(tie);
+  const leaf = m(new THREE.CircleGeometry(0.06, 10), 0x5aa54a, 0, 0.21, 0.13); leaf.scale.set(0.6, 1, 1); fb.add(leaf);
+  fb.rotation.z = 0.45;
+  for (const [k, g] of [['shears', sh], ['can', can], ['hoe', hoe], ['shovel', shv], ['fert', fert]]) { g.visible = false; scene.add(g); farmToolMesh[k] = g; }
 }
 function showFarmTool() { const k = farmSel(), on = farm.mode === 'ready' || farm.mode === 'drag' || farm.mode === 'return'; for (const [id, g] of Object.entries(farmToolMesh)) g.visible = on && id === k; }
 const ease3 = (u) => { u = Math.min(1, Math.max(0, u)); return u * u * (3 - 2 * u); };
@@ -2626,7 +2644,10 @@ function openRosaShop() {
 function renderRosaShop() {
   document.getElementById('rosaCoins').textContent = `you have ${S.coins.toLocaleString()} coins`;
   const n = SHOP.seedPack;
-  document.getElementById('rosaList').innerHTML = [...CROP_ORDER].sort((a, b) => unlockLevel(CROPS[a].seed) - unlockLevel(CROPS[b].seed) || CROPS[a].growMinutes - CROPS[b].growMinutes).map(id => {
+  const fertRow = `<div class="rrow" data-rfertrow><div class="ric">${svg('fert', '#8a5a34', 34)}</div>
+      <div class="rtx"><b>Fertilizer</b><span>${FERT.pack} bags \u00b7 each makes a crop ${FERT.minutes} min faster${invCount('fertilizer') ? ` \u00b7 you have ${invCount('fertilizer')}` : ''}</span></div>
+      <button data-rfert ${S.coins < FERT.buy ? 'disabled' : ''}>${FERT.buy}</button></div>`;   // fertilizer first, so it isn't buried under the locked seeds
+  document.getElementById('rosaList').innerHTML = fertRow + [...CROP_ORDER].sort((a, b) => unlockLevel(CROPS[a].seed) - unlockLevel(CROPS[b].seed) || CROPS[a].growMinutes - CROPS[b].growMinutes).map(id => {
     const c = CROPS[id], it = ITEMS[c.seed], cost = it.buy * n, lv = unlockLevel(c.seed), open = lv <= S.level, have = invCount(c.seed);
     return `<div class="rrow${open ? '' : ' locked'}" data-rseed="${c.seed}"><div class="ric">${cropImg(id, 40)}</div>
       <div class="rtx"><b>${c.name}</b><span>${n} seeds \u00b7 grows ${c.growMinutes} min${have ? ` \u00b7 you have ${have}` : ''}</span></div>
@@ -2634,6 +2655,13 @@ function renderRosaShop() {
   }).join('');
 }
 document.getElementById('rosaList').addEventListener('click', (e) => {
+  const f = e.target.closest('[data-rfert]');
+  if (f) {
+    if (f.disabled || S.coins < FERT.buy) return;
+    audio.play('buy'); S.coins -= FERT.buy; addItem('fertilizer', FERT.pack); renderHotbar(); commit(); renderRosaShop();
+    toast(`+${FERT.pack} fertilizer. It\u2019s in your Farm tools.`);
+    return;
+  }
   const b = e.target.closest('[data-rbuy]');
   if (b) {
     if (b.disabled) return;
@@ -2846,7 +2874,7 @@ const fits = (kind, id) => kind === 'star' ? id === S.cargo.star.item : kind ===
 const shipAway = () => S.cargo && S.cargo.back > 0;
 const cargoLoaded = () => S.cargo && S.cargo.boxes.some(b => boxCount(b) > 0);
 const cargoLab = () => window.__cargoLab || {};
-function boxPos(i) { const L = cargoLab(); return L.zig ? { x: DOCK.x + (i % 2 ? -0.58 : 0.58), z: -4.3 - i * 0.78 } : { x: DOCK.x + 0.58, z: -4.3 - i * (L.gap || 0.78) }; }
+function boxPos(i) { const L = cargoLab(); return L.zig ? { x: DOCK.x + (i % 2 ? -0.58 : 0.58), z: -4.3 - i * (L.gap || 0.78) } : { x: DOCK.x + 0.58, z: -4.3 - i * (L.gap || 0.78) }; }
 function buildCargo() { cargoReady = true; refreshCargo(true); }
 function refreshCargo(first) {
   if (!cargoReady) return;
@@ -3385,12 +3413,12 @@ document.getElementById('toMenu').addEventListener('click', () => { persistNow()
 function toastNow(t) { const el = document.getElementById('mmVer'); const v = el.textContent; el.textContent = t; setTimeout(() => { el.textContent = v; }, 1800); }
 
 // ---------- bag ----------
-const KIND_ORDER = { fish: 0, crop: 1, seed: 2, bait: 3, feed: 4, decor: 5 };
+const KIND_ORDER = { fish: 0, crop: 1, seed: 2, bait: 3, feed: 4, fert: 4, decor: 5 };
 function itemIcon(id) {
   const it = ITEMS[id], col = RARITY[it.rarity].color;
   if (it.kind === 'crop') return `<span class="ic" style="background:${col}22;border:2px solid ${col}">${cropImg(id, 26)}</span>`;
   if (it.kind === 'seed') return `<span class="ic seedpk">${cropImg(it.crop, 20)}</span>`;
-  const k = it.kind === 'fish' ? 'fish' : it.kind === 'crop' ? 'fruit' : it.kind === 'bait' ? id : it.kind === 'feed' ? 'feed' : it.kind === 'decor' ? it.decor : 'seeds';
+  const k = it.kind === 'fish' ? 'fish' : it.kind === 'crop' ? 'fruit' : it.kind === 'bait' ? id : it.kind === 'feed' ? 'feed' : it.kind === 'fert' ? 'fert' : it.kind === 'decor' ? it.decor : 'seeds';
   return `<span class="ic" style="background:${col}22;border:2px solid ${col}">${svg(k, col, 22)}</span>`;
 }
 function renderBag() {
@@ -3399,7 +3427,7 @@ function renderBag() {
     .sort((a, b) => (KIND_ORDER[ITEMS[a].kind] - KIND_ORDER[ITEMS[b].kind]) || (RARITY_IDX[ITEMS[b].rarity] - RARITY_IDX[ITEMS[a].rarity]));
   document.getElementById('bagList').innerHTML = ids.length ? ids.map(id => {
     const it = ITEMS[id], r = RARITY[it.rarity];
-    return `<div class="row">${itemIcon(id)}<div class="nm">${it.name}<small style="color:${r.color}">${it.kind === 'fish' || it.kind === 'crop' ? r.label + ' · ' + it.price + ' coins each' : it.kind === 'bait' ? 'Bait' : it.kind === 'feed' ? 'Animal feed' : it.kind === 'decor' ? 'Decor' : r.label}</small></div><div class="ct">×${S.inv[id]}</div></div>`;
+    return `<div class="row">${itemIcon(id)}<div class="nm">${it.name}<small style="color:${r.color}">${it.kind === 'fish' || it.kind === 'crop' ? r.label + ' · ' + it.price + ' coins each' : it.kind === 'bait' ? 'Bait' : it.kind === 'feed' ? 'Animal feed' : it.kind === 'fert' ? `Makes a crop ${FERT.minutes} min faster` : it.kind === 'decor' ? 'Decor' : r.label}</small></div><div class="ct">×${S.inv[id]}</div></div>`;
   }).join('') : '<div class="empty">Your bag is empty. Go fishing or farming!</div>';
   document.getElementById('bagCollection').textContent = `Fish book: ${dex.foundCount()} of ${dex.totalCount()} found.`   /* FISHING */;
 }
@@ -3792,7 +3820,8 @@ function frame() {
     snapCamera: () => { camFocus.set(camClampX(player.pos.x), player.y || 0, player.pos.z); } });
   // ANIMALS: everything animals.js borrows from this file (before saved decor is put back: the coop is decor)
   goals.init({ THREE, scene, camera, player, get S() { return S; }, commit, addItem, toast, audio, svg, renderHotbar, floorY, fishing, DOCK, BOARD,   // GOALS
-    ripen: () => { let n = 0; plots.forEach(p => { if (p.save.crop && !p.grown) { const due = Date.now() - growMs(p.save.crop) + 2500; if (p.save.plantedAt > due) { p.save.plantedAt = due; n++; } } }); if (n) commit(); return n; },   // the harvest goal: whatever is growing is ready in a moment
+    ripeIn: () => { let best = null; plots.forEach(p => { if (p.save.crop) { const left = p.grown ? 0 : Math.max(0, p.save.plantedAt + growMs(p.save.crop) - Date.now()); if (best === null || left < best) best = left; } }); return best; },   // ms until the first crop is ready (0 = one is ready, null = nothing planted)
+    ripen: (wait = 2500) => { let n = 0; plots.forEach(p => { if (p.save.crop && !p.grown) { const due = Date.now() - growMs(p.save.crop) + wait; if (p.save.plantedAt > due) { p.save.plantedAt = due; n++; } } }); if (n) commit(); return n; },   // the harvest goal: whatever is growing is ready in a moment
     npc: (k) => ({ higgins, fishel, rosa, pike })[k], bucketPos: spots.bucketPos, bucketCount: spots.bucketCount,
     dlgOpen: () => dlg.open, sheetOpen: () => [...document.querySelectorAll('.sheet')].some(x => !x.hidden), wardOn: () => ward.on,
     titleOn: () => document.body.classList.contains('inmenu'), playing: () => catchT <= 0, farm, farmPicked: () => farmPicked(),
