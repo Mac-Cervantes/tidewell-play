@@ -46,7 +46,7 @@ const RULES = {
              at: () => A.fishing.state === 'idle' ? { x: A.DOCK.x - 0.45, z: -6.5, via: [{ x: A.DOCK.x, z: -3.4 }], ring: true, h: 1.3 } : null },
   book:    { poll: () => vis('fishBook'), ui: () => vis('menu') ? byId('menuFish') : byId('menuBtn') },
   sell:    { on: 'sell', use: ['Talk'], at: () => npcAt('higgins'),
-             ui: () => A.dlgOpen() ? [...document.querySelectorAll('#dChoices button')].find(b => /^Sell/.test(b.textContent)) || null : null },
+             ui: () => vis('sellSheet') ? byId('sellGo') : A.dlgOpen() ? [...document.querySelectorAll('#dChoices button')].find(b => /^Sell/.test(b.textContent)) || null : null },
   bench:   { poll: (S) => S.decor.length > 0,
              ui: () => !vis('decorTray') ? slot('decor') : vis('decorCtl') ? byId('dPlace') : document.querySelector('#decorTray [data-decor="bench"]') || document.querySelector('#decorTray [data-decor]') },
   order:   { on: 'order', use: ['Orders'], tick: () => A.easyOrder(),   // one order you can fill right now: Higgins wants a turnip

@@ -230,10 +230,26 @@
   .obtns .row2 button { flex: 1; min-height: 34px; min-width: 36px; border: 2px solid #b9aec8; border-radius: 9px; background: #fffcf4; font-family: inherit; font-size: 11px; font-weight: 700; color: #5f5472; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0 4px; }
   .obtns .row2 button.on { border-color: #e0573e; color: #e0573e; background: #fff1ec; }
   .obtns .row2 button.armed { border-color: #e0573e; background: #e0573e; color: #fff; }
-  #orderTrack { pointer-events: auto; display: flex; align-items: center; gap: 6px; font-family: inherit; color: #2b2140; text-align: left; cursor: pointer; padding: 5px 8px; max-width: 190px; }
-  #orderTrack .oav { width: 22px; height: 22px; font-size: 11px; }
-  #orderTrack .tt { line-height: 1.2; font-size: 12px; white-space: normal; }
-  #orderTrack.ready { background: #effbe9; }
+  /* pending orders (the ones you took at the board): two on screen, tap for the rest */
+  #orderTrack { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; } #orderTrack[hidden] { display: none; }
+  .otrk { pointer-events: auto; display: flex; align-items: center; gap: 6px; font-family: inherit; color: #2b2140; text-align: left; cursor: pointer; padding: 5px 8px; width: 190px; box-sizing: border-box; }
+  .otrk .oav { width: 22px; height: 22px; font-size: 11px; }
+  .otrk .tt { line-height: 1.2; font-size: 12px; white-space: normal; }
+  .otrk.ready { background: #effbe9; }
+  .otrk.more { width: auto; font-size: 12px; font-weight: 700; padding: 3px 10px; }
+  .orow.taken { box-shadow: inset 6px 0 0 #ffd24d; } .otop b { white-space: nowrap; } .opend { background: #ffe08a; border: 2px solid #2b2140; border-radius: 8px; padding: 0 6px; font-size: 11.5px; font-weight: 700; margin-left: 6px; }
+  .obtns .row2 button[data-opin] { gap: 3px; font-size: 12.5px; color: #2b2140; } .obtns .row2 button[data-opin].on { background: #ffe08a; border-color: #2b2140; color: #2b2140; }
+  /* selling to Higgins (mockup A): how many of each, opening at "everything except what your pending orders need" */
+  .sellrow { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border: 2px solid #2b2140; border-radius: 14px; background: #fff; }
+  .sellrow .nm { flex: 1; line-height: 1.15; min-width: 0; } .sellrow .nm b { font-size: 15px; } .sellrow .nm small { display: block; font-size: 12px; color: #5f5472; }
+  .sellrow .keep { display: inline-flex; align-items: center; gap: 2px; background: #ffe08a; border: 1.5px solid #2b2140; border-radius: 7px; padding: 0 4px; white-space: nowrap; color: #2b2140; }
+  .sellrow button { width: 36px; height: 36px; border-radius: 10px; border: 2.5px solid #2b2140; background: #fffdf5; font: inherit; font-weight: 700; font-size: 20px; color: #2b2140; cursor: pointer; flex: none; }
+  .sellrow button:disabled { opacity: .35; } .sellrow .q { width: 24px; text-align: center; font-size: 18px; font-weight: 700; }
+  #sellList { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; max-height: 52vh; }
+  #sellTop { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; } #sellTop span { flex: 1; font-size: 13px; color: #5f5472; }
+  #sellMax { background: #ffe08a; border: 2.5px solid #2b2140; border-radius: 12px; padding: 5px 16px; font: inherit; font-weight: 700; font-size: 15px; color: #2b2140; cursor: pointer; }
+  #sellGo { width: 100%; margin-top: 8px; background: #8fcf63; border: 2.5px solid #2b2140; border-radius: 14px; padding: 10px; font: inherit; font-weight: 700; font-size: 18px; color: #2b2140; display: flex; align-items: center; justify-content: center; gap: 7px; box-shadow: 0 3px 0 rgba(43,33,64,.25); cursor: pointer; }
+  #sellGo:disabled { opacity: .5; } #sellGo .scoin { width: 20px; height: 20px; border-radius: 50%; background: #f4c542; border: 3px solid #b8860b; box-sizing: border-box; display: inline-block; }
   .note.center { text-align: center; margin: 8px 0 0; font-size: 11px; }
   .list { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 8px; }
   .row { display: flex; align-items: center; gap: 10px; border: 2px solid #2b2140; border-radius: 12px; padding: 6px 10px; background: #fff8ea; }
@@ -437,7 +453,7 @@
   <div id="topL">
     <div class="panel" id="coinPanel"><button id="lvBadge" aria-label="Town level"><svg width="48" height="48" viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="22.5" fill="#fffcf4" stroke="#2b2140" stroke-width="3"/><circle cx="24" cy="24" r="20" fill="none" stroke="#e6dfd2" stroke-width="5"/><circle id="lvArc" cx="24" cy="24" r="20" fill="none" stroke="#7cc86a" stroke-width="5" stroke-linecap="round" stroke-dasharray="0 126" transform="rotate(-90 24 24)"/><text id="lvNum" x="24" y="30" text-anchor="middle" font-family="Fredoka, sans-serif" font-size="18" font-weight="700" fill="#2b2140">1</text></svg></button><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="#ffd23f" stroke="#2b2140" stroke-width="2"/><path d="M12 8v8" stroke="#2b2140" stroke-width="2" stroke-linecap="round"/></svg><span id="coinsTxt">100</span></div>
     <div class="panel small" id="seasonTxt">Fall · Day 1 of 14</div>
-    <button class="panel small" id="orderTrack" hidden aria-label="Pinned order"></button>
+    <div id="orderTrack" hidden></div>
   </div>
   <div id="topR">
     <div class="panel small" id="clockBtn"><span id="todIcon"></span><span id="clock">2:15 PM</span></div>
@@ -504,6 +520,15 @@
     <p class="greet" id="baitGreet">Fish are picky, friend. Better bait, better fish.</p>
     <div class="bcards" id="baitCards"></div>
     <p class="note center">Your rod uses your best bait first, one per cast. No bait, no cast: the worm bucket by my stall fills up by itself, a worm every 10 minutes.</p>
+  </div>
+</div>
+
+<div id="sellSheet" class="sheet low" hidden>
+  <div class="card">
+    <div class="shophead"><h2>Sell to Higgins</h2><button class="xbtn" data-close aria-label="Close"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2b2140" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+    <div id="sellTop"><span>How many?</span><button id="sellMax">Max</button></div>
+    <div id="sellList"></div>
+    <button id="sellGo"></button>
   </div>
 </div>
 

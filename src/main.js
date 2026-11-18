@@ -2576,20 +2576,46 @@ function sellValue() {
 function talkMenu(msg) {
   const v = sellValue();
   showDialog(msg || (rosaOpen() && !S.rosaMet ? 'Rosa sells the seeds now. Her cart is at the far end of the beach.' : 'How can I help?'), [
-    ...(v.n ? [{ label: `Sell everything (${v.n} item${v.n > 1 ? 's' : ''} for ${v.total} coins)`, primary: true, go: sellAll }] : []),
+    ...(v.n ? [{ label: 'Sell', primary: true, go: () => { closeDialog(); openSell(); } }] : []),
     ...(rosaOpen() ? [] : [{ label: 'Buy seeds', go: () => seedMenu() }]),
     ...(store.isOpen() ? [] : [{ label: 'Browse decor', go: () => decorMenu() }]),   // STORE: the general store takes these over once it's open
     ...(S.level >= GEAR.shovel.level && !store.isOpen() ? [{ label: 'Buy tools', go: () => toolMenu() }] : []),
     { label: 'Goodbye', go: closeDialog },
   ]);
 }
-function sellAll() {
-  const v = sellValue();
-  for (const id of Object.keys(S.inv)) { const it = ITEMS[id]; if (it && (it.kind === 'fish' || it.kind === 'crop')) delete S.inv[id]; }
-  S.coins += v.total; audio.play('coins'); renderHotbar(); commit();
-  toast(`+${v.total} coins`); goals.event('sell');   // GOALS
-  talkMenu(`A pleasure doing business. That comes to ${v.total} coins.`);
+// Selling (mockup A, v0.1.91): pick how many of each. It opens at Max: everything except what your pending orders need.
+// (A tester wanted coins but also to keep things for the order board. Mac)
+const sellPick = {};
+const sellIds = () => Object.keys(S.inv).filter(id => ITEMS[id] && S.inv[id] > 0 && (ITEMS[id].kind === 'fish' || ITEMS[id].kind === 'crop'))
+  .sort((a, b) => (KIND_ORDER[ITEMS[a].kind] - KIND_ORDER[ITEMS[b].kind]) || (ITEMS[b].price - ITEMS[a].price));
+function orderNeeds(id) {   // how many of this your pending orders ask for
+  let n = 0; for (const o of S.orders.slots) if (!o.empty && takenOrders().includes(o.id)) for (const [it, c] of o.items) if (it === id) n += c;
+  return n;
 }
+const sellMaxOf = (id) => Math.max(0, invCount(id) - orderNeeds(id));
+function openSell() { for (const k of Object.keys(sellPick)) delete sellPick[k]; for (const id of sellIds()) sellPick[id] = sellMaxOf(id); renderSell(); openSheet('sellSheet'); }
+function renderSell() {
+  let total = 0;
+  document.getElementById('sellList').innerHTML = sellIds().map(id => {
+    const it = ITEMS[id], h = invCount(id), k = Math.min(h, orderNeeds(id)), q = Math.min(h, sellPick[id] || 0); total += q * it.price;
+    return `<div class="sellrow">${itemIcon(id)}<div class="nm"><b>${it.name}</b><small>${h} \u00b7 ${it.price} each${k ? ` <span class="keep">${svg('pin', '#2b2140', 12)}${k}</span>` : ''}</small></div>
+      <button data-sell="${id}" data-d="-1" aria-label="One less ${it.name}" ${q <= 0 ? 'disabled' : ''}>\u2212</button><span class="q">${q}</span><button data-sell="${id}" data-d="1" aria-label="One more ${it.name}" ${q >= h ? 'disabled' : ''}>+</button></div>`;
+  }).join('') || '<div class="empty">Nothing to sell</div>';
+  const go = document.getElementById('sellGo'); go.disabled = total <= 0; go.innerHTML = `Sell <span class="scoin"></span> ${total.toLocaleString()}`;
+}
+document.getElementById('sellList').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-sell]'); if (!b || b.disabled) return;
+  const id = b.dataset.sell; sellPick[id] = Math.max(0, Math.min(invCount(id), (sellPick[id] || 0) + +b.dataset.d)); audio.play('tap'); renderSell();
+});
+document.getElementById('sellMax').addEventListener('click', () => { for (const id of sellIds()) sellPick[id] = sellMaxOf(id); audio.play('tap'); renderSell(); });
+document.getElementById('sellGo').addEventListener('click', () => {
+  let total = 0;
+  for (const id of sellIds()) { const q = Math.min(invCount(id), sellPick[id] || 0); if (q > 0) { total += q * ITEMS[id].price; addItem(id, -q); } }
+  if (!total) return;
+  S.coins += total; audio.play('coins'); renderHotbar(); commit();
+  document.getElementById('sellSheet').hidden = true;
+  toast(`+${total} coins`); goals.event('sell');   // GOALS
+});
 function seedMenu(msg) {
   const n = SHOP.seedPack;
   showDialog(msg || 'Seeds come in packs of five. Smaller crops grow quicker.', [
@@ -3095,28 +3121,28 @@ function extraLabel(e) { return e.kind === 'heart' ? `${svg('heart', '#e0573e', 
 function renderOrders() {
   const slots = S.orders.slots, live = slots.filter(o => !o.empty);
   const ready = live.filter(orderReady).length;
-  document.getElementById('ordSub').textContent = `${ready} ready \u00b7 ${live.length} total`;
+  document.getElementById('ordSub').textContent = `${ready} ready \u00b7 ${takenOrders().length} pending`;
   document.getElementById('ordNote').textContent = ordAtBoard
-    ? 'Orders never expire. A new one is pinned about 10 minutes after you fill or toss one.'
-    : 'Fill orders at the board next to Higgins. Pin one to keep it on screen.';
+    ? 'Take an order to keep it on screen. Selling keeps what it needs.'
+    : 'Fill orders at the board next to Higgins.';
   const sorted = [...slots].sort((a, b) => (!!a.empty - !!b.empty) || (orderReady(b) - orderReady(a)));
   document.getElementById('ordList').innerHTML = sorted.map(o => {
     if (o.empty) { const m = Math.max(1, Math.ceil((o.at - Date.now()) / 60000)); return `<div class="orow empty">New order in about ${m} min</div>`; }
-    const r = orderReady(o), pinned = S.orders.pinned === o.id, f = ORDER_FOLK[o.who];
+    const r = orderReady(o), pinned = takenOrders().includes(o.id), f = ORDER_FOLK[o.who];
     const items = o.items.map(([id, n]) => { const h = Math.min(invCount(id), n); return `<div class="oit">${itemIcon(id)}<div>${ITEMS[id].name}<br><span class="${h >= n ? 'ok' : 'need'}">${h}/${n}${h >= n ? ' \u2713' : ''}</span></div></div>`; }).join('');
     const fill = ordAtBoard ? `<button class="fill" data-ofill="${o.id}" ${r ? '' : 'disabled'}>${r ? 'Fill' : 'Need more'}</button>` : `<button class="fill" disabled>At the board</button>`;
-    return `<div class="orow${r ? ' ready' : ''}">${folkAv(o.who)}<div class="omid"><div class="otop"><b>${f.name}</b><span class="orew">${svg('coin', '#c98a1a', 15)}${o.coins} <em>${extraLabel(o.extra)}</em></span></div><div class="oitems">${items}</div></div>
-      <div class="obtns">${fill}<div class="row2"><button data-opin="${o.id}" class="${pinned ? 'on' : ''}" aria-label="${pinned ? 'Unpin' : 'Pin to screen'}" aria-pressed="${pinned}">${svg('pin', pinned ? '#e0573e' : '#8a7fa0', 15)}</button>${ordAtBoard ? `<button data-otoss="${o.id}" class="${tossArmed === o.id ? 'armed' : ''}" aria-label="Toss this order">${tossArmed === o.id ? 'Sure?' : svg('x', '#8a7fa0', 14)}</button>` : ''}</div></div></div>`;
+    return `<div class="orow${r ? ' ready' : ''}${pinned ? ' taken' : ''}">${folkAv(o.who)}<div class="omid"><div class="otop"><b>${f.name}</b>${pinned ? '<span class="opend">Pending</span>' : ''}<span class="orew">${svg('coin', '#c98a1a', 15)}${o.coins} <em>${extraLabel(o.extra)}</em></span></div><div class="oitems">${items}</div></div>
+      <div class="obtns">${fill}<div class="row2"><button data-opin="${o.id}" class="${pinned ? 'on' : ''}" aria-pressed="${pinned}">${svg('pin', '#2b2140', 14)}${pinned ? 'Drop' : 'Take'}</button>${ordAtBoard ? `<button data-otoss="${o.id}" class="${tossArmed === o.id ? 'armed' : ''}" aria-label="Toss this order">${tossArmed === o.id ? 'Sure?' : svg('x', '#8a7fa0', 14)}</button>` : ''}</div></div></div>`;
   }).join('');
 }
 function clearSlot(id) {
   const i = S.orders.slots.findIndex(o => o.id === id);
   if (i >= 0) S.orders.slots[i] = { empty: true, who: S.orders.slots[i].who, at: Date.now() + refillMs() };
-  if (S.orders.pinned === id) S.orders.pinned = null;
+  S.orders.taken = takenOrders().filter(t => t !== id);
 }
 document.getElementById('ordList').addEventListener('click', (e) => {
   const b = e.target.closest('button'); if (!b || b.disabled) return;
-  if (b.dataset.opin) { const id = +b.dataset.opin; S.orders.pinned = S.orders.pinned === id ? null : id; commit(); renderOrders(); return; }
+  if (b.dataset.opin) { const id = +b.dataset.opin, t = takenOrders(); S.orders.taken = t.includes(id) ? t.filter(x => x !== id) : [...t, id]; audio.play('tap'); commit(); renderOrders(); renderTrack(); return; }
   if (b.dataset.otoss) { const id = +b.dataset.otoss; if (tossArmed !== id) { tossArmed = id; renderOrders(); return; } tossArmed = null; clearSlot(id); commit(); updateBoardNotes(); renderOrders(); toast('Order tossed'); return; }
   if (b.dataset.ofill) {
     const o = S.orders.slots.find(x => x.id === +b.dataset.ofill); if (!o || !orderReady(o) || !ordAtBoard) return;
@@ -3130,14 +3156,28 @@ document.getElementById('ordList').addEventListener('click', (e) => {
 });
 document.getElementById('menuOrders').addEventListener('click', () => openOrders(false));
 const trackEl = document.getElementById('orderTrack');
-trackEl.addEventListener('click', () => openOrders(nearBoard()));
+// Orders you took at the board are "pending" (Mac, v0.1.91): they stay on screen, two at a time, and selling keeps what they need.
+// S.orders.taken is a list of order ids (it was one pinned id before).
+function takenOrders() {
+  const st = S.orders; if (!st.taken) st.taken = [];
+  if (st.pinned != null) { if (!st.taken.includes(st.pinned)) st.taken.push(st.pinned); }   // a save from before v0.1.91 had one pinned order
+  delete st.pinned;
+  const live = st.slots.filter(o => !o.empty).map(o => o.id); st.taken = st.taken.filter(id => live.includes(id));
+  return st.taken;
+}
+let trackAll = false;
+trackEl.addEventListener('click', (e) => {
+  if (!e.target.closest('.otrk')) return;
+  if (takenOrders().length > 2) { trackAll = !trackAll; audio.play('tap'); renderTrack(); } else openOrders(nearBoard());   // tap for the rest; with one or two, tap opens the list
+});
 function renderTrack() {
-  const o = S.orders.slots.find(x => !x.empty && x.id === S.orders.pinned);
-  trackEl.hidden = !o; if (!o) return;
-  const r = orderReady(o);
-  const miss = o.items.find(([id, n]) => invCount(id) < n) || o.items[0];
-  trackEl.classList.toggle('ready', r);
-  trackEl.innerHTML = `${svg('pin', '#e0573e', 15)}${folkAv(o.who)}<span class="tt"><b>${ORDER_FOLK[o.who].name}</b><br>${r ? 'Ready \u2014 fill it at the board' : `${ITEMS[miss[0]].name} ${Math.min(invCount(miss[0]), miss[1])}/${miss[1]}`}</span>`;
+  const list = takenOrders().map(id => S.orders.slots.find(x => !x.empty && x.id === id)).filter(Boolean).sort((a, b) => orderReady(b) - orderReady(a));
+  trackEl.hidden = !list.length; if (!list.length) return;
+  const show = trackAll ? list : list.slice(0, 2), rest = list.length - show.length;
+  trackEl.innerHTML = show.map(o => {
+    const r = orderReady(o), miss = o.items.find(([id, n]) => invCount(id) < n) || o.items[0];
+    return `<button class="panel small otrk${r ? ' ready' : ''}" aria-label="Pending order">${svg('pin', '#e0573e', 15)}${folkAv(o.who)}<span class="tt"><b>${ORDER_FOLK[o.who].name}</b><br>${r ? 'Ready!' : `${ITEMS[miss[0]].name} ${Math.min(invCount(miss[0]), miss[1])}/${miss[1]}`}</span></button>`;
+  }).join('') + (rest > 0 ? `<button class="panel small otrk more">+${rest} more</button>` : trackAll && list.length > 2 ? '<button class="panel small otrk more">Show less</button>' : '');
 }
 
 

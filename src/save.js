@@ -30,7 +30,7 @@ export function freshSave() {
   cargo: null,          // the cargo ship's hold, star request, trip and payout (decision 70)
   look: null,           // your character's look (decision 63); null = the plain white dummy, until the wardrobe greets you
     caught: {},           // fish id -> how many ever caught
-    orders: { slots: [], pinned: null, next: 1 },   // order board; a slot is an order or { empty: true, at }
+    orders: { slots: [], taken: [], next: 1 },   // order board; a slot is an order or { empty: true, at }
     friends: {},          // townsfolk id -> friendship points
     xp: 0, level: 1,      // town level (decision 60); xp is lifetime total
     introDone: false,
