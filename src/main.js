@@ -658,7 +658,7 @@ function kHat(b, color, parts) {
   const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.7 });
   for (const [rt, rb, h, y] of parts) {
     const m = new THREE.Mesh(new THREE.CylinderGeometry(rt * H, rb * H, h * H, 20), mat);
-    m.position.copy(head).add(new THREE.Vector3(0, y * H - 0.06, 0)); m.castShadow = true;
+    m.position.copy(head).add(new THREE.Vector3(0, y * H - 0.06, -0.045 * H)); m.castShadow = true;   // sits back over the middle of the skull (it sat over the forehead, so the back of the head poked up through the brim; Mac, v0.1.93)
     scene.add(m); m.updateMatrixWorld(true); hb.attach(m);
   }
 }
@@ -669,7 +669,7 @@ const NPC_LOOKS = {
   rosa: { skin: '#b4643f', hair: 'long', hairColor: '#2a1712', eyes: 'big', mouth: 'smile', blush: true, top: 'tee', topColor: '#e8846a', bottom: 'pants', bottomColor: '#f4e6c8', shoes: '#7a4a2a', hat: 'sunhat', hatColor: '#f2d38a', hatColor2: '#e8846a' },
 };
 const NPC_HATS = {
-  higgins: [0x2b2140, [[0.17, 0.17, 0.015, 0], [0.105, 0.105, 0.22, 0.11]]],   // top hat (Fishel's bucket hat and Rosa's sun hat are real 3D hats now, in their looks)
+  higgins: [0x2b2140, [[0.185, 0.185, 0.015, 0.005], [0.132, 0.128, 0.22, 0.11]]],   // top hat (Fishel's bucket hat and Rosa's sun hat are real 3D hats now, in their looks)
 };
 function dressNPC(b, who) { setLook(b, NPC_LOOKS[who]); if (NPC_HATS[who]) { const [c, parts] = NPC_HATS[who]; kHat(b, c, parts); } }
 function syncPuppet(b) {

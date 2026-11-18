@@ -715,9 +715,10 @@ function placeUI() {
     ui.heart[k].hidden = !h;
   }
   { // the stray cat's paw tag (mockup A): five paws that fill in, shown when you're near it
-    const c = strays.cat, show = !!c && !quiet && Math.hypot(A.player.pos.x - c.x, A.player.pos.z - c.z) < 6.5;
+    // the paw tag: small, only when you're right by the cat and it's standing still (it was big and rode along while the cat followed you; Mac, v0.1.93)
+    const c = strays.cat, show = !!c && !quiet && (c.sp || 0) < 0.15 && Math.hypot(A.player.pos.x - c.x, A.player.pos.z - c.z) < 3.2;
     if (show) {
-      const n = pawsOf(); if (ui.paws.dataset.n !== String(n)) { ui.paws.dataset.n = String(n); ui.paws.innerHTML = [0, 1, 2, 3, 4].map(i => `<svg width="18" height="18" viewBox="0 0 24 24" fill="${i < n ? '#b9733b' : '#e9e2d4'}" stroke="${i < n ? '#2b2140' : '#b9b1c6'}" stroke-width="1.6" aria-hidden="true">${A.ICON.paw}</svg>`).join(''); ui.paws.setAttribute('aria-label', `${n} of 5 paws`); }
+      const n = pawsOf(); if (ui.paws.dataset.n !== String(n)) { ui.paws.dataset.n = String(n); ui.paws.innerHTML = [0, 1, 2, 3, 4].map(i => `<svg width="11" height="11" viewBox="0 0 24 24" fill="${i < n ? '#b9733b' : '#e9e2d4'}" stroke="${i < n ? '#2b2140' : '#b9b1c6'}" stroke-width="1.6" aria-hidden="true">${A.ICON.paw}</svg>`).join(''); ui.paws.setAttribute('aria-label', `${n} of 5 paws`); }
       const s = project(c.x, c.y + 0.72 * K.cat.length / 0.7, c.z); ui.paws.style.transform = `translate(${Math.round(s.x)}px, ${Math.round(s.y)}px) translate(-50%, -100%)`;
     }
     ui.paws.hidden = !show;
@@ -736,7 +737,7 @@ function buildUI() {
 .petBub { background: #fff; border: 2px solid #2b2140; border-radius: 18px; box-shadow: 0 3px 0 rgba(43,33,64,.3); display: flex; align-items: center; justify-content: center; font-weight: 700; }
 .petHeart { width: 60px; height: 52px; animation: petBob 1.3s ease-in-out infinite; }
 .petZzz { padding: 2px 12px; height: 38px; gap: 3px; }
-.petPaws { padding: 3px 7px; gap: 2px; border-radius: 14px; border-width: 2.5px; }
+.petPaws { padding: 1px 5px; gap: 1px; border-radius: 9px; border-width: 2px; opacity: .92; }
 .petBub[hidden] { display: none; }
 @keyframes petBob { 50% { margin-top: -6px; } }
 #petRing { position: fixed; left: 0; top: 0; z-index: 9; width: 0; height: 0; font-family: Fredoka, system-ui, sans-serif; }

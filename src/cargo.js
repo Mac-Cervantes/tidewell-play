@@ -78,11 +78,12 @@ export function createCargo(A) {
     if (showChest && !chestModel) { chestModel = place('pirate', 'chest', DOCK.x - DOCK.half - 0.95, -2.7, { r: 0.4, s: 0.9 }); }   // on the sand by the foot of the dock, clear of the crate bubbles
     if (!showChest && chestModel) { scene.remove(chestModel); chestModel = null; }
     // the next crate or barrel you can buy: a see-through one in its spot, with a price bubble (mockup A)
-    const nb = open && !shipAway() ? nextBox() : null;
+    // only once you can buy it (your town level is there): no outline or price before that (Mac, v0.1.93)
+    const nx0 = open && !shipAway() ? nextBox() : null, nb = nx0 && S.level >= nx0.level ? nx0 : null;
     if ((nb ? nb.kind : '') !== (ghostBox ? ghostBox.userData.kind : '') || (ghostBox && nb && ghostBox.userData.at !== S.cargo.slots.length)) {
       if (ghostBox) { scene.remove(ghostBox); ghostBox = null; }
       if (nb) {
-        const q = nextPos(); ghostBox = place('pirate', nb.kind === 'barrel' ? 'barrel' : 'crate', q.x, q.z, { s: 0.57 });
+        const q = nextPos(); ghostBox = place('pirate', nb.kind === 'barrel' ? 'barrel' : 'crate', q.x, q.z, { s: 0.5 });
         ghostBox.position.y = DOCK_FLOOR + 0.02; ghostBox.userData.kind = nb.kind; ghostBox.userData.at = S.cargo.slots.length;
         ghostBox.traverse(m => { if (m.isMesh) { m.material = ghostMat; m.castShadow = false; } });
       }
@@ -90,7 +91,7 @@ export function createCargo(A) {
     renderCargoBubbles();
   }
   let ghostBox = null;
-  const ghostMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.45, depthWrite: false });
+  const ghostMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.32, depthWrite: false });
   function boxIcon(kind, b) {
     if (kind === 'star') return `<span class="cstar">★</span>${itemIcon(S.cargo.star.item)}`;
     const top = Object.entries(b).sort((x, y) => y[1] - x[1])[0];
@@ -105,7 +106,7 @@ export function createCargo(A) {
       el.querySelector('.cbb').innerHTML = `${boxIcon(k, b)}<span class="cbar"><i style="width:${Math.min(100, Math.round(100 * n / cap))}%"></i></span><b>${n}/${cap}</b>${full ? '<span class="cok">✓</span>' : ''}${lv ? `<span class="clv">${'<i></i>'.repeat(lv)}</span>` : ''}`;
     });
     const nb = nextBox(), nx = document.getElementById('cargoNext');
-    if (nb) nx.querySelector('.cbb').innerHTML = `<span class="scoin"></span><b>${nb.cost.toLocaleString()}</b><span class="hdlv${S.level >= nb.level ? ' ok' : ''}">${nb.level}</span>`;
+    if (nb) nx.querySelector('.cbb').innerHTML = `<span class="scoin"></span><b>${nb.cost.toLocaleString()}</b>`;   // a small price tag (the town level is already met when it shows)
     // the ship's pay, over the chest
     const pay = document.getElementById('cargoPay');
     const p = S.cargo.payout;
@@ -141,7 +142,7 @@ export function createCargo(A) {
     if (near) cargoBubEl.querySelectorAll('.cb').forEach(el => { const p = boxPos(+el.dataset.i); placeBubble(el, p.x, DOCK_FLOOR + 0.75, p.z, 0, cargoLab().sm ? 0 : cargoLab().zig ? (+el.dataset.i % 2 ? -1 : 1) * 30 : (+el.dataset.i % 2 ? 1 : -1) * 44); if (parseFloat(el.style.top) > innerHeight - 100) el.style.display = 'none'; });   // never over the toolbar
     cargoBubEl.classList.toggle('sm', !!cargoLab().sm);
     if (near && cargoLab().focus) { const at = A.tool() === 'rod' ? null : nearCargo(); cargoBubEl.querySelectorAll('.cb').forEach(el => el.classList.toggle('big', +el.dataset.i === at)); }   // staggered so the row doesn't stack up
-    const nx = document.getElementById('cargoNext'); nx.hidden = !(near && ghostBox);
+    const nx = document.getElementById('cargoNext'); nx.hidden = !(near && ghostBox && Math.hypot(nextPos().x - player.pos.x, nextPos().z - player.pos.z) < 3.5);   // the price shows when you walk up to it
     if (!nx.hidden) { const q = nextPos(); placeBubble(nx, q.x, DOCK_FLOOR + 0.8, q.z, 0); }
     const pay = document.getElementById('cargoPay');
     if (!pay.hidden && chestModel) placeBubble(pay, chestModel.position.x, chestModel.position.y + 0.9, chestModel.position.z, 0);

@@ -131,16 +131,23 @@ function spawnSight(force) {
   const s = force ? SIGHTS.find(q => q.id === force) : (Math.random() < SIGHTS[1].chance ? SIGHTS[1] : SIGHTS[0]);
   const g = A.M.fish[s.model]; if (!g) { A.ensureFish(); return false; }
   const o = A.cloneFish(s.model);
-  const box = new THREE.Box3().setFromObject(o), len = Math.max(box.max.x - box.min.x, box.max.z - box.min.z);
+  // Measure the animal as it is really drawn (with its bones), not its raw mesh. The raw mesh of these two is about 100
+  // times bigger than what the bones draw, so they came out 4 cm long: there, counted, and impossible to see. (Mac, v0.1.93)
+  o.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(o, true), len = Math.max(box.max.x - box.min.x, box.max.y - box.min.y, box.max.z - box.min.z);
   o.scale.multiplyScalar(s.len / len);
-  const holder = new THREE.Group(); holder.add(o); A.scene.add(holder);
-  // pick a spot on the water that is on your screen right now, clear of the dock and the ship
-  let x = P.x, z = Math.min(-9.5, P.z - 7);
-  for (let i = 0; i < 8; i++) {
-    const w = A.waterAt((Math.random() * 2 - 1) * 0.55, 0.3 + Math.random() * 0.4);
-    if (!w || w.z > -8.5 || w.z < -40 || (w.x > 0 && w.x < 10 && w.z > -20)) continue;   // not on top of the dock and the cargo ship (the dock got longer in v0.1.81)
-    x = w.x; z = w.z; break;
+  o.traverse(m => { if (m.isMesh) { m.frustumCulled = false; m.castShadow = true; } });
+  // pick a spot on the water in the open middle of your screen (below the panels at the top, above the toolbar), not too far
+  // off to be seen, and clear of the dock and the ship. No good spot right now: don't show it at all, try again shortly.
+  // (It used to fall back to a spot off screen or behind the panels, and far ones faded into the haze. Mac, v0.1.93)
+  let x = 0, z = 0, ok = false;
+  for (let i = 0; i < 14 && !ok; i++) {
+    const w = A.waterAt((Math.random() * 2 - 1) * 0.5, -0.1 + Math.random() * 0.5);
+    if (!w || w.z > -6.5 || Math.hypot(w.x - P.x, w.z - P.z) > 24 || (w.x > -4 && w.x < 9 && w.z > -22)) continue;
+    x = w.x; z = w.z; ok = true;
   }
+  if (!ok) return false;
+  const holder = new THREE.Group(); holder.add(o); A.scene.add(holder);
   const dirX = Math.random() < 0.5 ? 1 : -1, whale = s.id === 'whale';
   sight = { s, holder, t: 0, dur: whale ? 5.5 : 2.2, x: x - dirX * (whale ? 1.5 : 2.25), z, dirX, whale, counted: false };   // the middle of its path is the spot picked
   A.addSplash(x, z);
@@ -151,7 +158,7 @@ function tickSight(dt) {
     const P = A.player.pos;
     if (P.z > 0.5 || A.quiet()) return;            // only while you're down by the water
     nextSight -= dt;
-    if (nextSight <= 0) { nextSight = A.debug() ? 30 : 240 + Math.random() * 240; spawnSight(); }
+    if (nextSight <= 0) { nextSight = spawnSight() ? (A.debug() ? 30 : 240 + Math.random() * 240) : 20; }
     return;
   }
   const q = sight; q.t += dt; const u = Math.min(1, q.t / q.dur), h = q.holder;
@@ -160,7 +167,7 @@ function tickSight(dt) {
   if (!q.counted && u > 0.5) {
     q.counted = true;
     const v = A.project(h.position.x, h.position.y, h.position.z);
-    if (v.z < 1 && v.x > 0 && v.x < innerWidth && v.y > 0 && v.y < innerHeight) {   // it only counts if it was on your screen
+    if (v.z < 1 && v.x > innerWidth * 0.06 && v.x < innerWidth * 0.94 && v.y > innerHeight * 0.16 && v.y < innerHeight * 0.72 && !A.busy()) {   // it only counts if you could really see it: in the open part of the screen, with no menu up
       const S = A.S; S.seen = S.seen || {}; S.seen[q.s.id] = (S.seen[q.s.id] || 0) + 1;
       const first = S.seen[q.s.id] === 1;
       if (first) A.addXP(XP.newFish);
