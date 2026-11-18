@@ -28,6 +28,8 @@ for (const id of ['ver', 'loadVer']) document.getElementById(id).textContent = V
 
 // ---------- save state ----------
 let settings = loadSettings();
+const PLAYER = typeof document !== 'undefined' && document.body.classList.contains('player');   // the players' copy: always the real save
+if (PLAYER && settings.debug) { settings.debug = false; storeSettings(settings); }
 audio.bindSettings(settings, storeSettings);
 let S = loadSave(settings.debug);
 seedLevel(S);

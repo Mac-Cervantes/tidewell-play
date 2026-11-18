@@ -129,6 +129,8 @@
   body.inmenu #cropTags { display: none; }
   #mainMenu { position: fixed; inset: 0; z-index: 19; font-family: inherit; color: #2b2140; }
   #mainMenu[hidden] { display: none; }
+  /* the players' copy (the github.io site): no debug harbor and no debug controls, only the settings they need (Mac, v0.1.89) */
+  body.player .mmCard.dbg, body.player .devOnly { display: none !important; }
   body.inmenu .hud, body.inmenu #topL, body.inmenu #topR, body.inmenu #toast { display: none !important; }
   .mmShade { position: absolute; inset: 0; background: linear-gradient(to top, rgba(43,33,64,0.6), rgba(43,33,64,0) 60%), linear-gradient(to bottom, rgba(43,33,64,0.25), rgba(43,33,64,0) 30%); }
   .mmLogo { position: absolute; left: 0; right: 0; top: calc(env(safe-area-inset-top, 0px) + 70px); text-align: center; }
@@ -565,12 +567,12 @@
     <div class="vol"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V5l10-2v13"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/></svg><label for="volMusic">Music</label><input id="volMusic" type="range" min="0" max="100" step="5" value="60"></div>
     <div class="vol"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16 9a4 4 0 010 6"/><path d="M18.5 6.5a8 8 0 010 11"/></svg><label for="volSfx">Sounds</label><input id="volSfx" type="range" min="0" max="100" step="5" value="80"></div>
     <button id="muteBtn" class="mute" aria-pressed="false"><span class="m-off"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16 9a4 4 0 010 6"/><path d="M18.5 6.5a8 8 0 010 11"/></svg>Mute everything</span><span class="m-on"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M17 9l5 6M22 9l-5 6"/></svg>Sound is off. Tap to turn on</span></button>
-    <p class="label">Character (base body for now)</p>
-    <div class="seg" id="bodySeg"><button data-b="m" class="on">Body A</button><button data-b="f">Body B</button></div>
-    <p class="label">Debug mode</p>
-    <div class="seg" id="debugSeg"><button data-d="off" class="on">Off</button><button data-d="on">On</button></div>
-    <p class="note">Debug mode uses its own save, so nothing you do there touches your real progress.</p>
-    <div id="debugPanel" hidden>
+    <p class="label devOnly">Character (base body for now)</p>
+    <div class="seg devOnly" id="bodySeg"><button data-b="m" class="on">Body A</button><button data-b="f">Body B</button></div>
+    <p class="label devOnly">Debug mode</p>
+    <div class="seg devOnly" id="debugSeg"><button data-d="off" class="on">Off</button><button data-d="on">On</button></div>
+    <p class="note devOnly">Debug mode uses its own save, so nothing you do there touches your real progress.</p>
+    <div id="debugPanel" class="devOnly" hidden>
       <div class="dgrid">
         <button data-dbg="coins">+1,000 coins</button>
         <button data-dbg="seeds">+ seeds (all kinds)</button>
@@ -655,6 +657,8 @@
 
 <script>
   // home-screen app: keep the game's files for offline play, but only on the real site (GitHub Pages), never inside claude.ai
+  // the players' copy is the github.io site; add ?dev to its address to get the debug harbor and controls back
+  if (/github\.io$/.test(location.hostname) && !/[?&]dev\b/.test(location.search)) document.body.classList.add('player');
   if ('serviceWorker' in navigator && /github\.io$|^localhost$/.test(location.hostname)) {
     addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
   }
