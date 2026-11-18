@@ -110,7 +110,7 @@ export const onDeck = (x, z) => !!jetty && Math.abs(x - JETTY.x) < JETTY.half &&
 export const deckY = (x, z) => (onDeck(x, z) ? JETTY.base + JETTY.top * JETTY.scale : null);
 function buildSteps() {
   const d = A.DOCK, s = M.Dock_Stairs.clone(true);
-  s.scale.set(0.2, 0.086, 0.1); s.position.set(d.x, 0.02, d.zNear + 0.46); A.scene.add(s);   // top step level with the deck, bottom on the sand
+  s.scale.set(0.2 * d.half / 0.97, 0.086, 0.1); s.position.set(d.x, 0.02, d.zNear + 0.46); A.scene.add(s);   // top step level with the deck, bottom on the sand
 }
 function dressBucket() {
   const b = bucketGroup(); if (!b) return;

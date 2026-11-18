@@ -138,7 +138,7 @@ function spawnSight(force) {
   let x = P.x, z = Math.min(-9.5, P.z - 7);
   for (let i = 0; i < 8; i++) {
     const w = A.waterAt((Math.random() * 2 - 1) * 0.55, 0.3 + Math.random() * 0.4);
-    if (!w || w.z > -8.5 || w.z < -40 || (w.x > 0 && w.x < 10 && w.z > -15.5)) continue;
+    if (!w || w.z > -8.5 || w.z < -40 || (w.x > 0 && w.x < 10 && w.z > -20)) continue;   // not on top of the dock and the cargo ship (the dock got longer in v0.1.81)
     x = w.x; z = w.z; break;
   }
   const dirX = Math.random() < 0.5 ? 1 : -1, whale = s.id === 'whale';

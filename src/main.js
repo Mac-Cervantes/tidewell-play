@@ -344,7 +344,8 @@ function furlSails(ship, k) {
 }
 // the cargo ship ties up across the end of the dock, bow to the right (Mac, v0.1.60, mockup A); it sails in from the left and out to the right
 // extra dock sections (2.12 m each) beyond the first four; everything at the dock's end moves out with them
-const DOCK_MORE = ((typeof window !== 'undefined' && window.__cargoLab) || {}).extra || 0, DOCK_ADD = DOCK_MORE * 2.12;
+// (two more since v0.1.81, mockup B: a longer, wider dock so the crates and their bubbles have room. Mac)
+const DOCK_MORE = ((typeof window !== 'undefined' && window.__cargoLab) || {}).extra ?? 2, DOCK_ADD = DOCK_MORE * 2.12;
 const SHIP_AT = { x: 2.4, z: -13.2 - DOCK_ADD }, SHIP_IN = { x: -34, z: -13.2 - DOCK_ADD }, SHIP_OUT = { x: 36, z: -13.2 - DOCK_ADD }, SHIP_ROT = Math.PI / 2;
 // the ship's hull at the dock, for casts (you cast off the sides of the dock, not into the ship)
 function shipBlocks(px, pz, x, z) {   // does a cast from (px, pz) to (x, z) land on or fly over the ship?
@@ -352,7 +353,8 @@ function shipBlocks(px, pz, x, z) {   // does a cast from (px, pz) to (x, z) lan
   if (z > -15.6 - DOCK_ADD && Math.abs(x - SHIP_AT.x) < 4.4) return true;
   const t = (SHIP_AT.z - pz) / (z - pz); return t > 0 && t < 1 && Math.abs(px + (x - px) * t - SHIP_AT.x) < 4.4;
 }
-const DOCK = { x: 2.4, half: 0.97, zNear: -3.2, zFar: -11.1 - DOCK_ADD };
+const DOCK_WIDE = ((typeof window !== 'undefined' && window.__cargoLab) || {}).wide ?? 2;   // extra planks beyond four (0.485 m each): six planks wide since v0.1.81
+const DOCK = { x: 2.4, half: 0.97 + DOCK_WIDE * 0.2425, zNear: -3.2, zFar: -11.1 - DOCK_ADD };
 function onDock(x, z) { return Math.abs(x - DOCK.x) < DOCK.half && z <= DOCK.zNear && z >= DOCK.zFar; }
 // the fence between your land and the wilds; it moves back each time you buy a lot (decision 69, layout D)
 const FENCE_Z0 = 7.55;
@@ -389,8 +391,9 @@ function widenDock(obj) {
     };
     for (let t = 0; t < n; t++) {
       const cx = (pos.getX(t * 3) + pos.getX(t * 3 + 1) + pos.getX(t * 3 + 2)) / 3;
-      if (Math.abs(cx) < 0.3) { emit(t, -PLANK / 2); emit(t, PLANK / 2); }   // the middle plank, twice
-      else emit(t, Math.sign(cx) * PLANK / 2);
+      const T = 4 + DOCK_WIDE;   // planks across
+      if (Math.abs(cx) < 0.3) { for (let j = 0; j < T - 2; j++) emit(t, (j - (T - 3) / 2) * PLANK); }   // the middle plank, repeated to fill the gap
+      else emit(t, Math.sign(cx) * (T - 3) * PLANK / 2);
     }
     const g = new THREE.BufferGeometry();
     for (const k of names) g.setAttribute(k, new THREE.Float32BufferAttribute(out[k], src.attributes[k].itemSize));
@@ -439,7 +442,7 @@ function buildWorld() {
   // --- harbor ---
   const deckY = WATER_Y - 0.02;
   for (let i = 0; i < 4 + DOCK_MORE; i++) dockParts.push(widenDock(place('pirate', 'structure-platform-dock', DOCK.x, -4.4 - i * 2.12, { y: deckY, r: 0 })));
-  const fx = DOCK.x + 0.95;
+  const fx = DOCK.x + DOCK.half - 0.02;
   const flag = place('pirate', 'flag-high-pennant', fx, -10.9 - DOCK_ADD, { y: 0, s: 0.8 });
   scene.updateMatrixWorld(true); flag.position.y = floorY(fx, -10.9);
   // rowboats pulled up on the shore, side by side (Mac)
@@ -1135,7 +1138,7 @@ function castTarget() {
   const p = player.pos.clone().addScaledVector(f, CAST_DIST + tackle.seaReach());   // TACKLE: the sea cast zips further out
   p.z = Math.min(p.z, -5.4);
   if (Math.abs(p.x - DOCK.x) < DOCK.half + 0.7 && p.z > DOCK.zFar - 1) p.x = DOCK.x + Math.sign(p.x - DOCK.x || 1) * (DOCK.half + 1.0);
-  if (shipBlocks(player.pos.x, player.pos.z, p.x, p.z)) { p.x = DOCK.x + Math.sign(f.x || 1) * (DOCK.half + 2.6); p.z = Math.min(-5.4, Math.max(player.pos.z - 1.2, -10.6)); }   // the ship's at the end of the dock: cast off the side
+  if (shipBlocks(player.pos.x, player.pos.z, p.x, p.z)) { p.x = DOCK.x + Math.sign(f.x || 1) * (DOCK.half + 2.6); p.z = Math.min(-5.4, Math.max(player.pos.z - 1.2, -10.6 - DOCK_ADD)); }   // the ship's at the end of the dock: cast off the side
   return p;
 }
 function beginCast(target) {
@@ -2873,8 +2876,9 @@ const capOf = (kind) => kind === 'star' ? S.cargo.star.n : holdOf().cap;
 const fits = (kind, id) => kind === 'star' ? id === S.cargo.star.item : kind === 'crate' ? ITEMS[id].kind === 'crop' : ITEMS[id].kind === 'fish';
 const shipAway = () => S.cargo && S.cargo.back > 0;
 const cargoLoaded = () => S.cargo && S.cargo.boxes.some(b => boxCount(b) > 0);
-const cargoLab = () => window.__cargoLab || {};
-function boxPos(i) { const L = cargoLab(); return L.zig ? { x: DOCK.x + (i % 2 ? -0.58 : 0.58), z: -4.3 - i * (L.gap || 0.78) } : { x: DOCK.x + 0.58, z: -4.3 - i * (L.gap || 0.78) }; }
+// crates down both sides of the dock, small picture bubbles, and the full bubble on the crate you stand at (mockup C, v0.1.81); window.__cargoLab overrides for mockups
+const cargoLab = () => ({ zig: 1, sm: 1, focus: 1, gap: 1.15, ...(window.__cargoLab || {}) });
+function boxPos(i) { const L = cargoLab(); return L.zig ? { x: DOCK.x + (i % 2 ? -1 : 1) * (DOCK.half - 0.39), z: -4.3 - i * (L.gap || 0.78) } : { x: DOCK.x + 0.58, z: -4.3 - i * (L.gap || 0.78) }; }
 function buildCargo() { cargoReady = true; refreshCargo(true); }
 function refreshCargo(first) {
   if (!cargoReady) return;
@@ -2896,7 +2900,7 @@ function refreshCargo(first) {
   }
   // the chest with your pay waits on the dock once the ship is back
   const showChest = open && S.cargo && S.cargo.payout && !shipAway();
-  if (showChest && !chestModel) { chestModel = place('pirate', 'chest', DOCK.x - 1.9, -2.7, { r: 0.4, s: 0.9 }); }   // on the sand by the foot of the dock, clear of the crate bubbles
+  if (showChest && !chestModel) { chestModel = place('pirate', 'chest', DOCK.x - DOCK.half - 0.95, -2.7, { r: 0.4, s: 0.9 }); }   // on the sand by the foot of the dock, clear of the crate bubbles
   if (!showChest && chestModel) { scene.remove(chestModel); chestModel = null; }
   renderCargoBubbles();
 }
@@ -2945,7 +2949,7 @@ function tickCargo(dt) {
   // bubbles over the crates when you're down by the harbor
   const near = cargoOpen() && S.cargo && player.pos.z < 1.5 && Math.abs(player.pos.x - DOCK.x) < 9 && !decor.on && farm.mode === 'off';
   cargoBubEl.hidden = !near;
-  if (near) cargoBubEl.querySelectorAll('.cb').forEach(el => { const p = boxPos(+el.dataset.i); placeBubble(el, p.x, DOCK_FLOOR + 0.75, p.z, 0, cargoLab().sm ? 0 : cargoLab().zig ? (+el.dataset.i % 2 ? -1 : 1) * 30 : (+el.dataset.i % 2 ? 1 : -1) * 44); });
+  if (near) cargoBubEl.querySelectorAll('.cb').forEach(el => { const p = boxPos(+el.dataset.i); placeBubble(el, p.x, DOCK_FLOOR + 0.75, p.z, 0, cargoLab().sm ? 0 : cargoLab().zig ? (+el.dataset.i % 2 ? -1 : 1) * 30 : (+el.dataset.i % 2 ? 1 : -1) * 44); if (parseFloat(el.style.top) > innerHeight - 100) el.style.display = 'none'; });   // never over the toolbar
   cargoBubEl.classList.toggle('sm', !!cargoLab().sm);
   if (near && cargoLab().focus) { const at = tool === 'rod' ? null : nearCargo(); cargoBubEl.querySelectorAll('.cb').forEach(el => el.classList.toggle('big', +el.dataset.i === at)); }   // staggered so the row doesn't stack up
   const pay = document.getElementById('cargoPay');
