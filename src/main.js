@@ -2502,14 +2502,9 @@ function updatePike(dt) {
   pike.b.root.rotation.y = pike.yaw; anim.idleTick(pike.b, dt);
 }
 const nearPike = () => pike && Math.hypot(player.pos.x - pike.pos.x, player.pos.z - pike.pos.z) < 1.9;
-function talkPike() {
-  const who = { name: 'Old Pike', role: 'fisherman', pos: pike.pos };
-  const menu = (msg) => showDialog(msg, [
-    { label: 'What do you need?', primary: true, go: () => { closeDialog(); openOrders(); } },
-    { label: 'Any tips?', go: () => menu(['See the rocks in the river? Fish hide by them. Cast close and the trout, the salmon, even a darter might bite.', 'Night fish and day fish are different folk. Come back after dark sometime.', 'Better bait, better fish. Worms are fine. A Glow Lure is finer.'][Math.floor(Math.random() * 3)]) },
-    { label: 'Bye', go: () => closeDialog() },
-  ], who);
-  menu(['Shh. You\u2019ll scare the fish.', 'Mornin\u2019. Or is it evenin\u2019? The fish don\u2019t care.', 'Sit a while. River\u2019s talkative today.'][Math.floor(Math.random() * 3)]);
+function talkPike() {   // just a short hello for now (Mac, v0.1.90); his orders menu, tips and hiring him are on the todo list
+  showDialog(['Shh. You\u2019ll scare the fish.', 'Mornin\u2019. Fish are biting.', 'Nice day for it.'][Math.floor(Math.random() * 3)],
+    [{ label: 'Bye', primary: true, go: () => closeDialog() }], { name: 'Old Pike', role: 'fisherman', pos: pike.pos });
 }
 // ---------- Rosa's Flowers: the seed cart (decision 61, opens at town level 2) ----------
 let rosa = null;
