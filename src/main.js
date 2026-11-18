@@ -2565,19 +2565,10 @@ function sayLines(lines, done) {
   };
   next();
 }
+// Higgins keeps it short: kids won't read a long speech, and the goals do the teaching (Mac, v0.1.84). It was seven screens.
 const INTRO = [
-  'Ah, you made it! Welcome to Tidewell. I’m Higgins, your concierge.',
-  'The deed is all yours now: this stretch of beach, the dock and the green beyond. A home away from home.',
-  'There’s room to grow, too. More lots can be bought down the road, though I’ll warn you, they don’t come cheap.',
-  'To begin, take your rod to the shore or the dock. Hold Cast to fill the meter, let go to cast, and tap Reel! the moment a fish bites.',
-  'Or open your farm tools, take the hoe and drag it over some grass in town. I’ve tucked 5 turnip seeds in your bag. Crops keep growing even while you’re away.',
-  'And a little housewarming gift: benches, lanterns, fences and flowers. Tap the house button on your toolbar to decorate however you like.',
-  'Fishel runs the bait stall by the dock. Better bait, better fish. Whatever you catch or grow, bring it to me and I’ll buy it. Off you go!',
-];
-const HOWTO = [
-  'Fishing: stand at the shore or on the dock with your rod. Hold Cast and let go when the meter looks good. Longer casts find rarer fish.',
-  'When the button turns green and says Reel!, tap it quickly or the fish gets away.',
-  'Farming: tap Farm tools and you’ll float up. Pick the hoe, shears or watering can, then drag it across the field and you’ll swing along with it. The hoe tills, the shears harvest, and a splash of water makes a plant finish a minute sooner. Plant from your seed bag. Small crops take minutes, pumpkins about an hour.',
+  'Welcome to Tidewell! I\u2019m Higgins.',
+  'This harbor is yours now. Follow the star goals and I\u2019ll show you around!',
 ];
 function sellValue() {
   let total = 0, n = 0;
@@ -2586,12 +2577,11 @@ function sellValue() {
 }
 function talkMenu(msg) {
   const v = sellValue();
-  showDialog(msg || (rosaOpen() && !S.rosaMet ? 'How may I be of service? Oh, and Rosa has her flower cart at the far end of the beach row now, past the new shop. She sells the seeds.' : 'How may I be of service?'), [
+  showDialog(msg || (rosaOpen() && !S.rosaMet ? 'Rosa sells the seeds now. Her cart is at the far end of the beach.' : 'How can I help?'), [
     ...(v.n ? [{ label: `Sell everything (${v.n} item${v.n > 1 ? 's' : ''} for ${v.total} coins)`, primary: true, go: sellAll }] : []),
     ...(rosaOpen() ? [] : [{ label: 'Buy seeds', go: () => seedMenu() }]),
     ...(store.isOpen() ? [] : [{ label: 'Browse decor', go: () => decorMenu() }]),   // STORE: the general store takes these over once it's open
     ...(S.level >= GEAR.shovel.level && !store.isOpen() ? [{ label: 'Buy tools', go: () => toolMenu() }] : []),
-    { label: 'How do things work again?', go: () => sayLines(HOWTO, () => talkMenu()) },
     { label: 'Goodbye', go: closeDialog },
   ]);
 }
@@ -2621,7 +2611,7 @@ function buySeeds(sd) {
 function startTalk() {
   goals.event('talk');   // GOALS
   if (!S.introDone) runIntro();
-  else if (!S.kitGiven) sayLines(['Ah, before I forget! Your housewarming kit: a bench, lanterns, fences, flowers, a barrel and a crate.', 'Tap the house button on your toolbar to place them wherever you like. And do visit Fishel by the dock for bait.'], () => { giveStarterKit(); toast('Starter decor added to your bag'); talkMenu(); });
+  else if (!S.kitGiven) sayLines(['A gift for your new home! Tap the house button to place it.'], () => { giveStarterKit(); toast('Starter decor added to your bag'); talkMenu(); });
   else talkMenu();
 }
 function decorMenu(msg) {
