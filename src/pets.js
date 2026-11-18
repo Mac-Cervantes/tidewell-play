@@ -42,7 +42,7 @@ export const biteMul = () => { const p = A && pet('fish'); return p && rt.fish &
 ITEMS.pet_treat = { name: 'Pet treat', kind: 'feed', rarity: 'common', price: 2, buy: PETS.treat.buy };
 DECOR.fishbowl = { name: 'Fish bowl', model: ['pirate', 'barrel', 0.6], size: [1, 1], buy: 0, fixed: true, build: () => buildBowl() };
 ITEMS.decor_fishbowl = { name: DECOR.fishbowl.name, kind: 'decor', rarity: 'common', price: 0, decor: 'fishbowl' };
-DECOR.doghouse = { name: 'Doghouse', model: ['pirate', 'barrel', 0.6], size: [2, 2], buy: 0, fixed: true, build: () => buildDoghouse() };
+DECOR.doghouse = { name: 'Doghouse', model: ['pirate', 'barrel', 0.6], size: [2, 2], buy: 0, turns: [0, 1, 3], build: (r) => buildDoghouse(r) };   // turns: door to the front, right or left, never the back (Mac, v0.1.92)
 ITEMS.decor_doghouse = { name: DECOR.doghouse.name, kind: 'decor', rarity: 'common', price: 0, decor: 'doghouse' };
 DECOR.catbed = { name: 'Cat basket', model: ['pirate', 'barrel', 0.6], size: [1, 1], buy: 0, fixed: true, build: () => buildCatBed() };
 ITEMS.decor_catbed = { name: DECOR.catbed.name, kind: 'decor', rarity: 'common', price: 0, decor: 'catbed' };
@@ -124,15 +124,16 @@ function buildBowl() {
 }
 // the doghouse (round 3, option B): a 2 × 2 footprint, the house at the back and a mat in front where the puppy lies
 const MAT_Z = 0.5;
-function buildDoghouse() {
-  const g = new THREE.Group(), wood = mat(0xb9793f), roof = mat(0xd0483c), dark = mat(0x3a2a22), W = 1.0, D = 1.05, H = 0.7, cz = -0.42;
+function buildDoghouse(r = 0) {
+  const top = new THREE.Group(), g = new THREE.Group(); top.add(g); g.rotation.y = r * Math.PI / 2;
+  const wood = mat(0xb9793f), roof = mat(0xd0483c), dark = mat(0x3a2a22), W = 1.0, D = 1.05, H = 0.7, cz = -0.42;
   g.add(mesh(new THREE.BoxGeometry(W, H, D), wood, 0, H / 2, cz));
   for (const sd of [-1, 1]) { const r = mesh(new THREE.BoxGeometry(0.74, 0.06, D + 0.2), roof, sd * 0.27, H + 0.2, cz); r.rotation.z = -sd * 0.72; g.add(r); }
   const gb = mesh(new THREE.CylinderGeometry(0.5, 0.5, D - 0.02, 3), wood, 0, H + 0.12, cz, 1, 0.7, 1); gb.rotation.x = Math.PI / 2; g.add(gb);
   g.add(mesh(new THREE.BoxGeometry(0.5, 0.5, 0.04), dark, 0, 0.25, cz + D / 2 + 0.005));
   const arch = mesh(new THREE.CylinderGeometry(0.25, 0.25, 0.04, 12, 1, false, 0, Math.PI), dark, 0, 0.5, cz + D / 2 + 0.005); arch.rotation.set(Math.PI / 2, 0, Math.PI / 2); g.add(arch);
   const m = mesh(new THREE.BoxGeometry(0.95, 0.05, 0.7), mat(0xe9c98f), 0, 0.03, MAT_Z); m.castShadow = false; m.receiveShadow = true; g.add(m);
-  return g;
+  return top;
 }
 function buildCrate() {
   const g = new THREE.Group(), wood = mat(0xb9793f), dark = mat(0x8a5a2b), S = 0.78, Hh = 0.3;
@@ -394,7 +395,7 @@ function tickDog(p, R, dt, elapsed, night, held) {
   let clip = 'Idle', speed = 1;
   R.doze = false; R.out = false; R.atHome = false;
   if (away) {                                                     // on its mat in front of the doghouse (or waiting by the dock)
-    const h = !house ? waitSpot(k) : k === 'dog' ? { x: house.x + 1, z: house.z + 1 + MAT_Z } : { x: house.x + 0.5, z: house.z + 0.5 }, d = Math.hypot(h.x - R.x, h.z - R.z);   // the doghouse's mat, or in the cat basket
+    const h = !house ? waitSpot(k) : k === 'dog' ? { x: house.x + 1 + Math.sin((house.r || 0) * Math.PI / 2) * MAT_Z, z: house.z + 1 + Math.cos((house.r || 0) * Math.PI / 2) * MAT_Z } : { x: house.x + 0.5, z: house.z + 0.5 }, d = Math.hypot(h.x - R.x, h.z - R.z);   // the doghouse's mat, or in the cat basket
     if (d > 0.14) { if (d > 16 || R.stuck > 2.5) { R.x = h.x; R.z = h.z; R.stuck = 0; } else step(R, h.x, h.z, Math.min(5.5, 1.2 + d * 2.2), dt, d < 1.6); }
     else { stand(R, dt); R.atHome = true; R.doze = night && !!house; let dy = (R.doze ? 1.1 : 0) - R.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); R.yaw += dy * Math.min(1, dt * 4); }
   } else {

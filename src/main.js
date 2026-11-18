@@ -2247,7 +2247,8 @@ decorEls.tray.addEventListener('click', (e) => {
 });
 document.getElementById('dRotate').addEventListener('click', () => {
   const gh = decor.ghost; if (!gh || DECOR[gh.id].fixed) return;   // ANIMALS: buildings always face the camera (decision 49)
-  const c = decorCenter(gh.id, gh.x, gh.z, gh.r); gh.r = (gh.r + 1) % 4;
+  const c = decorCenter(gh.id, gh.x, gh.z, gh.r), turns = DECOR[gh.id].turns;   // some things only turn to a few sides (the doghouse never shows its back)
+  gh.r = turns ? turns[(turns.indexOf(gh.r) + 1) % turns.length] : (gh.r + 1) % 4;
   const [w, d] = footprint(gh.id, gh.r); gh.x = Math.round(c.x - w / 2); gh.z = Math.round(c.z - d / 2);
   scene.remove(gh.g); gh.g = buildDecorMesh(gh.id, gh.r);
   gh.g.traverse(o => { if (o.isMesh) { o.material = o.material.clone(); o.material.transparent = true; o.material.opacity = 0.62; o.material.depthWrite = false; o.castShadow = false; o.userData.ghost = true; } });
