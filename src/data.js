@@ -1,7 +1,7 @@
 // Tidewell game data. Everything tunable lives here as plain tables so it can be
 // exported to JSON for the Unity version later (see tools/export-data.mjs).
 
-export const VERSION = '0.1.86';
+export const VERSION = '0.1.87';
 export const VERSION_LABEL = 'BETA v' + VERSION;
 
 // Rarity tiers (decision 36). `weight` is the base chance per bite with worms.
@@ -365,6 +365,17 @@ export const GOALS = [
   // harvest comes before the order goal, and the order goal makes sure one order asks for the turnips you just picked (Mac, v0.1.83: "the order board wants something but I have nothing at the start")
   { id: 'harvest', title: 'Harvest your turnips',                    pic: 'basket', prize: { item: 'seed_carrot', n: 5 }, hint: 'Your turnips are ready! Walk up to one and tap Harvest.' },
   { id: 'order',   title: 'Fill an order at the board',              pic: 'board',  prize: { coins: 30 }, hint: 'Higgins wants a turnip. Walk to the board by him, tap Orders, then Fill.' },
+];
+
+// More goals after the first ten, a short chain each time a town level opens something (decision 91). Same card, hand and path,
+// with a tag like "Level 2 · 1 of 4". A chain starts once the first ten are done and you've reached its level.
+export const GOALS_MORE = [
+  { id: 'lv2', level: 2, tag: 'Level 2', goals: [
+    { id: 'rosa', title: 'Meet Rosa at her flower cart', pic: 'chat', prize: { item: 'fertilizer', n: 2 }, hint: 'Rosa is at the far left end of the beach. Walk up and tap Talk.' },
+    { id: 'rseeds', title: 'Buy seeds from Rosa', pic: 'seeds', prize: { coins: 10 }, hint: 'Talk to Rosa and tap the price on any seed pack.' },
+    { id: 'fert', title: 'Use fertilizer on a crop', pic: 'fert', prize: { coins: 20 }, hint: 'Plant something, then open Farm tools, pick Fertilizer and drag it over the crop.' },
+    { id: 'goldfish', title: 'Adopt the goldfish by the dock', pic: 'fish', prize: { item: 'pet_treat', n: 3, label: 'Pet treats' }, hint: 'A goldfish jumps beside the dock. Walk out next to it and tap Adopt.' },
+  ] },
 ];
 
 // ---------- pets (v0.1.68, from try/pets): the goldfish and the Shiba Inu puppy. The code is in pets.js ----------

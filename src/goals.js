@@ -1,10 +1,10 @@
-// src/goals.js — the first ten goals (v0.1.67, Mac: "the player is never guided by the game itself").
+// src/goals.js — the goals: the first ten, then a short chain per town level (GOALS_MORE, v0.1.87). (v0.1.67, Mac: "the player is never guided by the game itself").
 // One goal at a time: a card under the season panel (mockup B), and while it's the current goal the game points the way:
 //   a path of round dots from you to the goal, a glow on the person (or a ring at the place), a pointing hand,
 //   an arrow at the screen edge when the goal is off screen, and a glow + hand on the button to press.
 // Texts and prizes are GOALS in data.js; what counts as done and where to point is RULES here.
 // main.js hooks are marked GOALS. The hand picture is assets/ui/hand.svg (points right), made to be swapped for a pack's.
-import { GOALS, ITEMS } from './data.js';
+import { GOALS, GOALS_MORE, ITEMS } from './data.js';
 import { mergeVertices } from '../lib/addons/utils/BufferGeometryUtils.js';
 
 const HAND_SRC = './assets/ui/hand.svg';
@@ -15,6 +15,7 @@ const vis = (id) => { const e = byId(id); return !!e && !e.hidden; };
 const slot = (id) => document.querySelector(`#hotbar .slot[data-tool="${id}"]`);
 const isOn = (el) => !!el && el.classList.contains('on');
 const total = (S) => Object.values(S.caught || {}).reduce((a, b) => a + b, 0);
+const nearNpc = (k) => { const n = A.npc(k); return !!n && Math.hypot(n.pos.x - A.player.pos.x, n.pos.z - A.player.pos.z) < 3; };
 const npcAt = (k) => { const n = A.npc(k); return n ? { x: n.pos.x, z: n.pos.z, npc: n, h: 2.45 } : null; };
 
 // Every goal holds your hand through each step until it's done (Mac, v0.1.69).
@@ -57,6 +58,15 @@ const RULES = {
              wait: () => lab().wait ? (A.ripeIn() || 0) : 0,   // while they grow: no line, no hand, just a timer on the card
              ui: (S) => S.plots.some(q => q.crop) ? null : S.plots.length ? seedStep() : tillStep(),   // nothing growing: back to planting
              at: (S) => { const p = S.plots.find(q => q.crop) || S.plots[0]; return p ? plotAt(p) : null; } },
+  // ---- level 2 (v0.1.87) ----
+  rosa:    { on: 'rosa', use: () => nearNpc('rosa') ? ['Talk'] : [], at: () => npcAt('rosa'), skip: () => !!A.S.rosaMet },
+  rseeds:  { on: 'rosaBuy', use: () => nearNpc('rosa') ? ['Talk'] : [], at: () => npcAt('rosa'),
+             ui: () => vis('rosaShop') ? document.querySelector('#rosaList [data-rbuy]:not([disabled])') : null },
+  fert:    { on: 'fert', use: () => !A.invCount('fertilizer') && nearNpc('rosa') ? ['Talk'] : ['Plant'],
+             ui: (S) => { if (!A.invCount('fertilizer')) return null; const p = A.growing(); return p ? farmStep('fert', () => plotAt(p)) : S.plots.some(q => !q.crop) ? seedStep() : tillStep(); },
+             at: (S) => { if (!A.invCount('fertilizer')) return npcAt('rosa'); const p = S.plots.find(q => !q.crop); return !A.growing() && p ? plotAt(p) : null; } },
+  goldfish: { poll: () => A.hasPet('fish'), use: ['Adopt'],
+             at: () => ({ x: A.DOCK.x - A.DOCK.half + 0.35, z: -6.6, via: [{ x: A.DOCK.x, z: -3.4 }], ring: true, h: 1.3 }) },
 };
 
 function state() {
@@ -67,7 +77,20 @@ function state() {
   }
   return S.goals;
 }
-const cur = () => { const g = state(); return g.done ? null : GOALS[g.i]; };
+// where you are: the first ten, or a later chain once they're done and you've reached its level
+function where() {
+  const g = state();
+  if (!g.done) return { list: GOALS, st: g, ch: null };
+  g.more = g.more || {};
+  for (const ch of GOALS_MORE) {
+    // a harbor that's already past this level when the chain first comes up skips it (it has found these things by itself)
+    const st = g.more[ch.id] || (g.more[ch.id] = (A.S.level || 1) > ch.level ? { i: ch.goals.length, done: true } : { i: 0 });
+    if (st.done) continue;
+    return (A.S.level || 1) >= ch.level ? { list: ch.goals, st, ch } : null;
+  }
+  return null;
+}
+const cur = () => { const w = where(); return w ? w.list[w.st.i] : null; };
 
 export function event(name) { if (name === 'harvest') earn('fruit'); const d = cur(); if (d && RULES[d.id].on === name) complete(); }
 
@@ -94,13 +117,13 @@ export function debug(k) {
 
 const prizeHTML = (p, big) => p.coins
   ? `<span class="gcoin${big ? ' big' : ''}"></span><b>${big ? '+' : ''}${p.coins}</b>`
-  : `<b>${big ? '+' : ''}${p.n} ${ITEMS[p.item] ? ITEMS[p.item].name : p.item}</b>`;
+  : `<b>${big ? '+' : ''}${p.n} ${p.label || (ITEMS[p.item] ? ITEMS[p.item].name : p.item)}</b>`;
 
 function complete() {
-  const S = A.S, g = state(), d = GOALS[g.i]; if (!d) return;
+  const S = A.S, w = where(); if (!w) return; const g = w.st, d = w.list[g.i]; if (!d) return;
   if (d.prize.coins) S.coins += d.prize.coins; else A.addItem(d.prize.item, d.prize.n);
-  g.i++; delete g.started; delete g.base; if (g.i >= GOALS.length) g.done = true;
-  doneQ.push({ d, next: GOALS[g.i] || null });
+  g.i++; delete g.started; delete g.base; if (g.i >= w.list.length) g.done = true;
+  doneQ.push({ d, next: w.list[g.i] || null, ch: w.ch });
   A.renderHotbar(); A.commit();
 }
 
@@ -108,11 +131,11 @@ function complete() {
 const STAR = (s) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l3 6.5 7 .8-5.2 4.8 1.5 7L12 17.5 5.7 21.1l1.5-7L2 9.3l7-.8z" fill="#ffd84d" stroke="#2b2140" stroke-width="2" stroke-linejoin="round"/></svg>`;
 let cardKey = '';
 function renderCard() {
-  const d = cur(), show = !!d;
+  const w = where(), d = w ? w.list[w.st.i] : null, show = !!d;
   if (card.hidden === show) card.hidden = !show;
   if (!d || cardKey === d.id) return;
   cardKey = d.id; waitKey = '';
-  card.innerHTML = `<span class="gtop">${STAR(20)}<b>${d.title}</b></span>
+  card.innerHTML = `${w.ch ? `<span class="gtag">${w.ch.tag} \u00b7 ${w.st.i + 1} of ${w.list.length}</span>` : ''}<span class="gtop">${STAR(20)}<b>${d.title}</b></span>
     <span class="gmid">${A.svg(d.pic, '#2b2140', 24)}<span class="gbar"></span><b>0/1</b></span>
     <span class="gprize">Prize: ${prizeHTML(d.prize)}</span>`;
 }
@@ -131,10 +154,10 @@ function tickDone() {
     return;
   }
   if (!doneQ.length) return;
-  const { d, next } = doneQ.shift();
+  const { d, next, ch } = doneQ.shift();
   doneEl.innerHTML = `<div class="gdcard" role="dialog" aria-label="Goal done">${STAR(54)}
-    <div class="gdh">${next ? 'Goal done!' : 'All ten done!'}</div><div class="gdsub">${d.title}</div><div class="gdprize">${prizeHTML(d.prize, true)}</div>
-    ${next ? `<div class="gdnext"><span>Next goal</span><b>${next.title}</b></div>` : '<div class="gdnext"><b>You know your way around. The harbor is yours!</b></div>'}
+    <div class="gdh">${next ? 'Goal done!' : ch ? `${ch.tag} goals done!` : 'All ten done!'}</div><div class="gdsub">${d.title}</div><div class="gdprize">${prizeHTML(d.prize, true)}</div>
+    ${next ? `<div class="gdnext"><span>Next goal</span><b>${next.title}</b></div>` : ch ? '<div class="gdnext"><b>More goals come with your next town level.</b></div>' : '<div class="gdnext"><b>You know your way around. The harbor is yours!</b></div>'}
     <button class="gdok">Nice!</button></div>`;
   doneEl.hidden = false; A.audio.play('levelUp');
   doneEl.querySelector('.gdok').addEventListener('click', () => { doneEl.hidden = true; });
@@ -205,7 +228,8 @@ function guide(dt, r) {
   else if (!A.playing()) { u = null; drag = null; }
   else {
     const use = byId('useBtn');
-    if (r.use && !use.hidden && r.use.includes(byId('useLabel').textContent)) { el = use; drag = null; }
+    const labels = typeof r.use === 'function' ? r.use() : r.use;   // a function when the label only counts near the right person
+    if (labels && !use.hidden && labels.includes(byId('useLabel').textContent)) { el = use; drag = null; }
     else if (u) el = u;
     else if (!drag) at = r.at ? r.at(S) : null;
   }
@@ -241,12 +265,13 @@ export function frame(dt) {
   byId('menuFish').hidden = !g.done && g.i < 5;      // the Fish Book shows up with its goal (Mac: hide the buttons)
   byId('menuOrders').hidden = !g.done && g.i < GOALS.findIndex(q => q.id === 'order');    // and Orders with the order goal
   renderCard();
-  if (g.done) { hideAll(); tickDone(); return; }
-  const r = RULES[GOALS[g.i].id];
-  if (!g.started) { g.started = 1; if (r.start) r.start(S, g); }
-  if ((r.poll && r.poll(S, g)) || (r.skip && r.skip())) { hideAll(); complete(); return; }
-  if (r.tick) r.tick(S, g);
-  const w = r.wait ? r.wait(S, g) : 0;
+  const here = where();
+  if (!here) { hideAll(); tickDone(); return; }
+  const st = here.st, r = RULES[here.list[st.i].id];
+  if (!st.started) { st.started = 1; if (r.start) r.start(S, st); }
+  if ((r.poll && r.poll(S, st)) || (r.skip && r.skip())) { hideAll(); complete(); return; }
+  if (r.tick) r.tick(S, st);
+  const w = r.wait ? r.wait(S, st) : 0;
   cardWait(w);
   if (w > 0) { waited = true; quiet = lab().line === false; hideAll(); tickDone(); return; }
   if (waited) { waited = false; card.classList.remove('gready'); void card.offsetWidth; card.classList.add('gready'); A.audio.play('eggPop'); }
@@ -285,6 +310,7 @@ export function init(api) {
 const CSS = `
 #goalCard { display: flex; flex-direction: column; align-items: stretch; gap: 4px; width: 178px; padding: 7px 10px; text-align: left; white-space: normal !important; font: inherit; color: #2b2140; cursor: pointer; pointer-events: auto; }
 #goalCard[hidden] { display: none; }
+#goalCard { position: relative; } #goalCard .gtag { position: absolute; right: 8px; top: -10px; background: #5aa54a; color: #fff; border: 2px solid #2b2140; border-radius: 9px; padding: 0 7px; font-size: 12px; font-weight: 600; line-height: 16px; }
 body:has(#decorTray:not([hidden])) #goalCard { display: none; }   /* the decorating banner sits there */
 #goalCard .gtop { display: flex; align-items: flex-start; gap: 6px; font-size: 15px; line-height: 1.15; } #goalCard .gtop svg { flex: none; }
 #goalCard .gmid { display: flex; align-items: center; gap: 7px; } #goalCard .gmid b { font-size: 16px; }

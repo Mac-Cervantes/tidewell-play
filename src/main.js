@@ -1726,7 +1726,7 @@ function farmApply(c, k) {
     if (!p || !p.save.crop || p.grown || !invCount('fertilizer')) return false;
     addItem('fertilizer', -1); p.save.plantedAt -= FERT.minutes * 60000; p.save.watered = null; syncCrop(p);
     damageText(p.g.position.clone().setY(p.g.position.y + 0.8), `-${FERT.minutes}m`);
-    farm.n++; farm.fert = (farm.fert || 0) + 1; buzz(); audio.play('plant'); return true;
+    farm.n++; farm.fert = (farm.fert || 0) + 1; buzz(); audio.play('plant'); goals.event('fert'); return true;   // GOALS
   }
   if (kind === 'shovel') {
     const i = S.dig ? S.dig.spots.findIndex(sp => !sp.done && sp.x === c.x && sp.z === c.z) : -1;
@@ -2634,6 +2634,7 @@ function openRosaShop() {
   document.getElementById('rosaGreet').textContent = S.rosaMet
     ? 'Back for more? Everything here is fresh off the cart.'
     : 'Hi, I\u2019m Rosa! Seeds, straight off the cart. New varieties come in as your town grows.';
+  goals.event('rosa');   // GOALS (before rosaMet is set: meeting her is the first level 2 goal)
   if (!S.rosaMet) { S.rosaMet = true; commit(); }
   renderRosaShop(); openSheet('rosaShop');
 }
@@ -2663,7 +2664,7 @@ document.getElementById('rosaList').addEventListener('click', (e) => {
     if (b.disabled) return;
     const sd = b.dataset.rbuy, n = SHOP.seedPack, cost = ITEMS[sd].buy * n;
     if (S.coins < cost || !unlocked(sd)) return;
-    audio.play('buy'); S.coins -= cost; addItem(sd, n); S.seedSel = sd; renderHotbar(); commit(); renderRosaShop();
+    audio.play('buy'); S.coins -= cost; addItem(sd, n); S.seedSel = sd; renderHotbar(); commit(); renderRosaShop(); goals.event('rosaBuy');   // GOALS
     toast(`+${n} ${ITEMS[sd].name.toLowerCase()}`);
     return;
   }
@@ -3617,6 +3618,8 @@ function frame() {
       st.slots[i] = { id: st.next++, who: 'higgins', items: [['turnip', n]], coins: Math.max(10, Math.round(ITEMS.turnip.price * n * ORDERS.payMult / 5) * 5), extra: { kind: 'heart' } };
       commit(); updateBoardNotes(); if (!document.getElementById('orders').hidden) renderOrders(); renderTrack();
     },
+    growing: () => { let f = null; plots.forEach(p => { if (!f && p.save.crop && !p.grown) f = p.save; }); return f; },   // a crop that's still growing (for the fertilizer goal)
+    invCount, hasPet: (k) => !!(S.pets && S.pets.list && S.pets.list.some(q => q.k === k)),
     ripeIn: () => { let best = null; plots.forEach(p => { if (p.save.crop) { const left = p.grown ? 0 : Math.max(0, p.save.plantedAt + growMs(p.save.crop) - Date.now()); if (best === null || left < best) best = left; } }); return best; },   // ms until the first crop is ready (0 = one is ready, null = nothing planted)
     ripen: (wait = 2500) => { let n = 0; plots.forEach(p => { if (p.save.crop && !p.grown) { const due = Date.now() - growMs(p.save.crop) + wait; if (p.save.plantedAt > due) { p.save.plantedAt = due; n++; } } }); if (n) commit(); return n; },   // the harvest goal: whatever is growing is ready in a moment
     npc: (k) => ({ higgins, fishel, rosa, pike })[k], bucketPos: spots.bucketPos, bucketCount: spots.bucketCount,
