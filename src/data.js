@@ -1,7 +1,7 @@
 // Tidewell game data. Everything tunable lives here as plain tables so it can be
 // exported to JSON for the Unity version later (see tools/export-data.mjs).
 
-export const VERSION = '0.1.78';
+export const VERSION = '0.1.79';
 export const VERSION_LABEL = 'BETA v' + VERSION;
 
 // Rarity tiers (decision 36). `weight` is the base chance per bite with worms.
@@ -356,7 +356,7 @@ export const GOALS = [
   { id: 'sell',    title: 'Sell your fish to Higgins',               pic: 'coin',   prize: { coins: 20 }, hint: 'Talk to Higgins and tap Sell everything.' },
   { id: 'bench',   title: 'Place your bench',                        pic: 'bench',  prize: { item: 'decor_flowers', n: 2 }, hint: 'Tap the house button, pick the bench and tap Place.' },
   { id: 'order',   title: 'Fill an order at the board',              pic: 'board',  prize: { coins: 30 }, hint: 'Bring what an order asks for to the board by Higgins and tap Fill.' },
-  { id: 'harvest', title: 'Harvest your turnips',                    pic: 'basket', prize: { item: 'seed_carrot', n: 5 }, hint: 'Turnips take about 20 minutes. When the bubble shows, tap Harvest.' },
+  { id: 'harvest', title: 'Harvest your turnips',                    pic: 'basket', prize: { item: 'seed_carrot', n: 5 }, hint: 'Your turnips are ready! Walk up to one and tap Harvest.' },
 ];
 
 // ---------- pets (v0.1.68, from try/pets): the goldfish and the Shiba Inu puppy. The code is in pets.js ----------

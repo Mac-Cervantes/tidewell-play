@@ -49,7 +49,9 @@ const RULES = {
              ui: () => !vis('decorTray') ? slot('decor') : vis('decorCtl') ? byId('dPlace') : document.querySelector('#decorTray [data-decor="bench"]') || document.querySelector('#decorTray [data-decor]') },
   order:   { on: 'order', use: ['Orders'], at: () => ({ x: A.BOARD.x, z: A.BOARD.z + 0.9, ring: true, h: 2.3 }),
              ui: () => vis('orders') ? document.querySelector('#orders [data-ofill]:not([disabled])') : null },
-  harvest: { on: 'harvest', use: ['Harvest', 'Plant'],
+  // the turnips take 20 minutes and this goal comes up after about five, so while it's the goal anything growing ripens in a moment
+  // (a playtester was asked to harvest and couldn't; replanted ones ripen the same way). Mac, v0.1.79
+  harvest: { on: 'harvest', use: ['Harvest', 'Plant'], tick: () => A.ripen(),
              ui: (S) => S.plots.some(q => q.crop) ? null : S.plots.length ? seedStep() : tillStep(),   // nothing growing: back to planting
              at: (S) => { const p = S.plots.find(q => q.crop) || S.plots[0]; return p ? plotAt(p) : null; } },
 };
@@ -240,6 +242,7 @@ export function frame(dt) {
   const r = RULES[GOALS[g.i].id];
   if (!g.started) { g.started = 1; if (r.start) r.start(S, g); }
   if ((r.poll && r.poll(S, g)) || (r.skip && r.skip())) { hideAll(); complete(); return; }
+  if (r.tick) r.tick(S, g);
   guide(dt, r); tickDone();
 }
 

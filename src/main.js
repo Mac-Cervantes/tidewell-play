@@ -474,11 +474,11 @@ function buildWorld() {
   townFence.push(place('town', 'banner-red', -1.6, FZ - 0.2, { s: 0.6 }), place('town', 'banner-red', 1.6, FZ - 0.2, { s: 0.6 }));
 
   // nature dressing around town
-  const nearWater = (x, z, m = 1.1) => [[0, 0], [m, 0], [-m, 0], [0, m], [0, -m]].some(([a, b]) => spots.onBank(x + a, z + b));
+  const nearWater = (x, z, m = 0.35) => [[0, 0], [m, 0], [-m, 0], [0, m], [0, -m]].some(([a, b]) => spots.isWet(x + a, z + b));   // is a trunk here standing in water?
   const T = (n, x, z, s = 1, r = rnd() * 6.28) => place('nature', n, x, z, { s, r });
   [['tree_oak', -12, 0.5], ['tree_default', 10.6, 3.4], ['tree_detailed', 11.8, -0.4], ['tree_oak', -12.5, 5.6],
    ['tree_default', 13.4, 5.8], ['tree_detailed', -10.8, -1.8], ['tree_pineRoundA', 14.5, 1.2], ['tree_oak', 9.4, 6.2]]
-    .forEach(([n, x, z]) => { const sc = 1.15 + rnd() * 0.2; if (nearWater(x, z)) { rnd(); return; } T(n, x, z, sc); });   // never in the river: the two oaks that sat on its bank, leaning over the water, are gone (Mac, v0.1.77)
+    .forEach(([n, x, z]) => T(n, spots.onBank(x, z) ? spots.innerBank(z) + 0.5 : x, z, 1.15 + rnd() * 0.2));   // FISHING: never in the river (the two oaks on its bank came back in v0.1.79: their trunks are dry)
   const flowers = ['flower_redA', 'flower_yellowA', 'flower_purpleA'];
   for (const [cx, cz] of [[3.6, 5.6], [5.8, 1.6], [7.2, 1.4], [-5.5, 4.4], [1.8, 1.2], [-1.6, 6.6], [6.0, 5.8]]) {
     for (let k = 0; k < 5; k++) wildPlant(T(flowers[(((k + Math.round(cx)) % 3) + 3) % 3], cx + (rnd() - 0.5) * 1.2, cz + (rnd() - 0.5) * 0.8, 1.1));
@@ -491,7 +491,7 @@ function buildWorld() {
   refreshDig();
 
   // --- the wilds past the gate ---
-  // no trees in or right beside the river and the lake (Mac, v0.1.77: "trees in the water look odd"); a skipped tree still uses up its random numbers so the rest of the woods stay where they were
+  // no tree trunks in the river or the lake (Mac, v0.1.79: "if the trunk isn't in the water you can put them back"); a skipped tree still uses up its random numbers so the rest of the woods stay where they were
   const dryTree = (n, x, z, sc) => { if (nearWater(x, z)) { rnd(); return; } occluder(T(n, x, z, sc)); };
   const wildTrees = [];
   for (let i = 0; i < 40; i++) {
@@ -1544,7 +1544,15 @@ function placeUndo() {
   undoBtn.style.left = (ref.left - 64 - 12) + 'px';
   undoBtn.style.top = (ref.top + ref.height / 2 - 32) + 'px';
 }
-function updateUndo() { undoBtn.hidden = decor.on || farm.mode !== 'off' || !(history.length && (tool === 'farm' || tool === 'seeds' || tool === 'fruit') && player.pos.z < FENCE_Z); }
+// Undo is for the slip you just made: it goes away 12 s after the action, and it stays hidden during the first ten goals.
+// (A playtester tapped it long after planting, which pulled up their tutorial turnip and sent them back to the start. Mac, v0.1.79)
+const UNDO_MS = 12000;
+function updateUndo() {
+  const now = Date.now(); history.forEach(h => { h.t = h.t || now; });
+  if (history.length && now - history[history.length - 1].t > UNDO_MS) history.length = 0;
+  if (S.goals && !S.goals.done) history.length = 0;
+  undoBtn.hidden = decor.on || farm.mode !== 'off' || !(history.length && (tool === 'farm' || tool === 'seeds' || tool === 'fruit') && player.pos.z < FENCE_Z);
+}
 
 // the target square on the ground
 let tapCell = null, tapFlash = 0, tapBad = false, marker;
@@ -2837,7 +2845,8 @@ const capOf = (kind) => kind === 'star' ? S.cargo.star.n : holdOf().cap;
 const fits = (kind, id) => kind === 'star' ? id === S.cargo.star.item : kind === 'crate' ? ITEMS[id].kind === 'crop' : ITEMS[id].kind === 'fish';
 const shipAway = () => S.cargo && S.cargo.back > 0;
 const cargoLoaded = () => S.cargo && S.cargo.boxes.some(b => boxCount(b) > 0);
-function boxPos(i) { return { x: DOCK.x + 0.58, z: -4.3 - i * 0.78 }; }
+const cargoLab = () => window.__cargoLab || {};
+function boxPos(i) { const L = cargoLab(); return L.zig ? { x: DOCK.x + (i % 2 ? -0.58 : 0.58), z: -4.3 - i * 0.78 } : { x: DOCK.x + 0.58, z: -4.3 - i * (L.gap || 0.78) }; }
 function buildCargo() { cargoReady = true; refreshCargo(true); }
 function refreshCargo(first) {
   if (!cargoReady) return;
@@ -2908,7 +2917,9 @@ function tickCargo(dt) {
   // bubbles over the crates when you're down by the harbor
   const near = cargoOpen() && S.cargo && player.pos.z < 1.5 && Math.abs(player.pos.x - DOCK.x) < 9 && !decor.on && farm.mode === 'off';
   cargoBubEl.hidden = !near;
-  if (near) cargoBubEl.querySelectorAll('.cb').forEach(el => { const p = boxPos(+el.dataset.i); placeBubble(el, p.x, DOCK_FLOOR + 0.75, p.z, 0, (+el.dataset.i % 2 ? 1 : -1) * 44); });   // staggered so the row doesn't stack up
+  if (near) cargoBubEl.querySelectorAll('.cb').forEach(el => { const p = boxPos(+el.dataset.i); placeBubble(el, p.x, DOCK_FLOOR + 0.75, p.z, 0, cargoLab().sm ? 0 : cargoLab().zig ? (+el.dataset.i % 2 ? -1 : 1) * 30 : (+el.dataset.i % 2 ? 1 : -1) * 44); });
+  cargoBubEl.classList.toggle('sm', !!cargoLab().sm);
+  if (near && cargoLab().focus) { const at = tool === 'rod' ? null : nearCargo(); cargoBubEl.querySelectorAll('.cb').forEach(el => el.classList.toggle('big', +el.dataset.i === at)); }   // staggered so the row doesn't stack up
   const pay = document.getElementById('cargoPay');
   if (!pay.hidden && chestModel) placeBubble(pay, chestModel.position.x, chestModel.position.y + 0.9, chestModel.position.z, 0);
   if (!near) pay.style.display = 'none';
@@ -3781,6 +3792,7 @@ function frame() {
     snapCamera: () => { camFocus.set(camClampX(player.pos.x), player.y || 0, player.pos.z); } });
   // ANIMALS: everything animals.js borrows from this file (before saved decor is put back: the coop is decor)
   goals.init({ THREE, scene, camera, player, get S() { return S; }, commit, addItem, toast, audio, svg, renderHotbar, floorY, fishing, DOCK, BOARD,   // GOALS
+    ripen: () => { let n = 0; plots.forEach(p => { if (p.save.crop && !p.grown) { const due = Date.now() - growMs(p.save.crop) + 2500; if (p.save.plantedAt > due) { p.save.plantedAt = due; n++; } } }); if (n) commit(); return n; },   // the harvest goal: whatever is growing is ready in a moment
     npc: (k) => ({ higgins, fishel, rosa, pike })[k], bucketPos: spots.bucketPos, bucketCount: spots.bucketCount,
     dlgOpen: () => dlg.open, sheetOpen: () => [...document.querySelectorAll('.sheet')].some(x => !x.hidden), wardOn: () => ward.on,
     titleOn: () => document.body.classList.contains('inmenu'), playing: () => catchT <= 0, farm, farmPicked: () => farmPicked(),
