@@ -38,6 +38,9 @@ export const GAITS = {
   // Mac's pick (Nov 16): Runner arms, elbows a touch further out (no clipping), a real fist
   rf: { name: 'Runner arms + fist', base: 'ra1', armRun: { amp: 0.6, back: 0.3, elbow: 1.45, pump: 0.25, open: 0.45, out: 0.2 },
     posture: { knee: 0.06, arm: 0.07, armFwd: 0.1, elbow: 0.25, hands: 0, fist: { fingers: 1.7, thumb: 1.3 } } },
+  // elbows further out (Nov 18): same as rf, wider
+  rw1: { name: 'Elbows out more', base: 'rf', armRun: { amp: 0.6, back: 0.3, elbow: 1.45, pump: 0.25, open: 0.45, out: 0.6, handOut: 0.1 } },
+  rw2: { name: 'Elbows out wide', base: 'rf', armRun: { amp: 0.6, back: 0.3, elbow: 1.45, pump: 0.25, open: 0.45, out: 0.85, handOut: 0 } },
   ra2: { name: 'Sprinter arms', base: 's1', armRun: { amp: 0.85, back: 0.35, elbow: 1.4, pump: 0.35, open: 0.55, out: 0.08 } },
   s2: { name: 'Stand up in stages, slower', base: 'r', stand: { legs: 0.6, armDelay: 0.05, arms: 0.5, leanDelay: 0.25, lean: 0.9 } },
   r2: { name: 'Relaxed, arms in more', base: 'w', posture: { knee: 0.06, arm: 0.02, armFwd: 0.08, elbow: 0.3, hands: 0.5 } },
@@ -551,7 +554,7 @@ function runArms(b, o, w) {
     _rt.set(sg * Math.sin(o.out), -Math.cos(th), Math.sin(th)).normalize();
     aimBone(k, arm, fore, _rt, w);
     const e = th + o.elbow + Math.max(0, sw) * (o.pump || 0) - Math.max(0, -sw) * (o.open || 0);   // forearm angle from straight down; the elbow opens on the back swing so the fist passes the hip
-    _rt.set(sg * Math.sin(o.out) * 0.4, -Math.cos(e), Math.sin(e)).normalize();
+    _rt.set(sg * Math.sin(o.out) * (o.handOut ?? 0.4), -Math.cos(e), Math.sin(e)).normalize();   // forearm: keeps less of the elbow's outward angle, so the fist stays near the body line
     aimBone(k, fore, hand, _rt, w);
   }
 }

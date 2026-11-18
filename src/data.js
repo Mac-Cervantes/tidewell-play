@@ -1,7 +1,7 @@
 // Tidewell game data. Everything tunable lives here as plain tables so it can be
 // exported to JSON for the Unity version later (see tools/export-data.mjs).
 
-export const VERSION = '0.1.82';
+export const VERSION = '0.1.83';
 export const VERSION_LABEL = 'BETA v' + VERSION;
 
 // Rarity tiers (decision 36). `weight` is the base chance per bite with worms.
@@ -362,8 +362,9 @@ export const GOALS = [
   { id: 'book',    title: 'Open your Fish Book',                     pic: 'book',   prize: { coins: 10 }, hint: 'Tap the menu button, then Fish Book.' },
   { id: 'sell',    title: 'Sell your fish to Higgins',               pic: 'coin',   prize: { coins: 20 }, hint: 'Talk to Higgins and tap Sell everything.' },
   { id: 'bench',   title: 'Place your bench',                        pic: 'bench',  prize: { item: 'decor_flowers', n: 2 }, hint: 'Tap the house button, pick the bench and tap Place.' },
-  { id: 'order',   title: 'Fill an order at the board',              pic: 'board',  prize: { coins: 30 }, hint: 'Bring what an order asks for to the board by Higgins and tap Fill.' },
+  // harvest comes before the order goal, and the order goal makes sure one order asks for the turnips you just picked (Mac, v0.1.83: "the order board wants something but I have nothing at the start")
   { id: 'harvest', title: 'Harvest your turnips',                    pic: 'basket', prize: { item: 'seed_carrot', n: 5 }, hint: 'Your turnips are ready! Walk up to one and tap Harvest.' },
+  { id: 'order',   title: 'Fill an order at the board',              pic: 'board',  prize: { coins: 30 }, hint: 'Higgins wants a turnip. Walk to the board by him, tap Orders, then Fill.' },
 ];
 
 // ---------- pets (v0.1.68, from try/pets): the goldfish and the Shiba Inu puppy. The code is in pets.js ----------

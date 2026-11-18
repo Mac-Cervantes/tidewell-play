@@ -900,7 +900,7 @@ function setBody(k) {
 }
 // ANIM: the look Mac picked (Nov 14: B's walk and idle + the Universal Animation Library long jog;
 // Nov 15: relaxed upright standing posture, arms in, fists); 'now' brings back v0.1.51
-const ANIM_LOOK = 'rf';   // Nov 16: + finish the last step, stand up in stages (A), runner arms, real fists
+const ANIM_LOOK = 'rw1';   // Nov 16: + finish the last step, stand up in stages (A), runner arms, real fists; Nov 18: elbows out more
 // move every player body at ground speed v (m/s); the legs keep pace with the ground
 function locomote(v, dt) { for (const b of Object.values(bodies)) anim.locomote(b, v, dt); }
 // play a one-shot on the upper body while the legs keep walking
@@ -3852,6 +3852,15 @@ function frame() {
     snapCamera: () => { camFocus.set(camClampX(player.pos.x), player.y || 0, player.pos.z); } });
   // ANIMALS: everything animals.js borrows from this file (before saved decor is put back: the coop is decor)
   goals.init({ THREE, scene, camera, player, get S() { return S; }, commit, addItem, toast, audio, svg, renderHotbar, floorY, fishing, DOCK, BOARD,   // GOALS
+    // the order goal: if nothing on the board can be filled, Higgins's order becomes the turnips you're carrying (one if you have none)
+    easyOrder: () => {
+      const st = S.orders; if (!st || !st.slots || st.slots.some(o => orderReady(o))) return;
+      const i = st.slots.findIndex(o => o.who === 'higgins'); if (i < 0) return;
+      const n = Math.max(1, Math.min(2, invCount('turnip'))), o = st.slots[i];
+      if (!o.empty && o.items.length === 1 && o.items[0][0] === 'turnip' && o.items[0][1] === n) return;
+      st.slots[i] = { id: st.next++, who: 'higgins', items: [['turnip', n]], coins: Math.max(10, Math.round(ITEMS.turnip.price * n * ORDERS.payMult / 5) * 5), extra: { kind: 'heart' } };
+      commit(); updateBoardNotes(); if (!document.getElementById('orders').hidden) renderOrders(); renderTrack();
+    },
     ripeIn: () => { let best = null; plots.forEach(p => { if (p.save.crop) { const left = p.grown ? 0 : Math.max(0, p.save.plantedAt + growMs(p.save.crop) - Date.now()); if (best === null || left < best) best = left; } }); return best; },   // ms until the first crop is ready (0 = one is ready, null = nothing planted)
     ripen: (wait = 2500) => { let n = 0; plots.forEach(p => { if (p.save.crop && !p.grown) { const due = Date.now() - growMs(p.save.crop) + wait; if (p.save.plantedAt > due) { p.save.plantedAt = due; n++; } } }); if (n) commit(); return n; },   // the harvest goal: whatever is growing is ready in a moment
     npc: (k) => ({ higgins, fishel, rosa, pike })[k], bucketPos: spots.bucketPos, bucketCount: spots.bucketCount,

@@ -48,7 +48,8 @@ const RULES = {
              ui: () => A.dlgOpen() ? [...document.querySelectorAll('#dChoices button')].find(b => /^Sell/.test(b.textContent)) || null : null },
   bench:   { poll: (S) => S.decor.length > 0,
              ui: () => !vis('decorTray') ? slot('decor') : vis('decorCtl') ? byId('dPlace') : document.querySelector('#decorTray [data-decor="bench"]') || document.querySelector('#decorTray [data-decor]') },
-  order:   { on: 'order', use: ['Orders'], at: () => ({ x: A.BOARD.x, z: A.BOARD.z + 0.9, ring: true, h: 2.3 }),
+  order:   { on: 'order', use: ['Orders'], tick: () => A.easyOrder(),   // one order you can fill right now: Higgins wants a turnip
+             at: () => ({ x: A.BOARD.x, z: A.BOARD.z + 0.9, ring: true, h: 2.3 }),
              ui: () => vis('orders') ? document.querySelector('#orders [data-ofill]:not([disabled])') : null },
   // the turnips take 20 minutes and this goal comes up after about five, so while it's the goal anything growing ripens in a moment
   // (a playtester was asked to harvest and couldn't; replanted ones ripen the same way). Mac, v0.1.79
@@ -71,7 +72,7 @@ const cur = () => { const g = state(); return g.done ? null : GOALS[g.i]; };
 export function event(name) { if (name === 'harvest') earn('fruit'); const d = cur(); if (d && RULES[d.id].on === name) complete(); }
 
 // ---------- the toolbar fills up (Mac, v0.1.71, mockup A): a tool shows once you've earned it, in the order you got it ----------
-const TOOL_AT = [['farm', 1], ['seeds', 1], ['rod', 3], ['decor', 7], ['fruit', 10]];   // tool, and the goal number it arrives with (the basket also comes with a first harvest)
+const TOOL_AT = [['farm', 1], ['seeds', 1], ['rod', 3], ['decor', 7], ['fruit', 9]];   // tool, and the goal number it arrives with (the basket also comes with a first harvest)
 const TOOL_NAME = { farm: 'Farm tools', seeds: 'Seeds', rod: 'Fishing rod', decor: 'Decorate', fruit: 'Harvest basket' };
 const TOOL_PIC = { farm: 'hoe', seeds: 'seeds', rod: 'rod', decor: 'decor', fruit: 'fruit' };
 const newQ = [];
@@ -238,7 +239,7 @@ function guide(dt, r) {
 export function frame(dt) {
   const S = A.S, g = state(); syncBar();
   byId('menuFish').hidden = !g.done && g.i < 5;      // the Fish Book shows up with its goal (Mac: hide the buttons)
-  byId('menuOrders').hidden = !g.done && g.i < 8;    // and Orders with the order goal
+  byId('menuOrders').hidden = !g.done && g.i < GOALS.findIndex(q => q.id === 'order');    // and Orders with the order goal
   renderCard();
   if (g.done) { hideAll(); tickDone(); return; }
   const r = RULES[GOALS[g.i].id];
