@@ -49,6 +49,21 @@ function clearShopGround(st) {
   n += before - st.plots.length;
   if (n) setTimeout(() => toast('Some decor went back to your bag to make room for the new shop.'), 4000);
 }
+// v0.1.95: the coop's footprint grew from 3 x 2 to 3 x 3 so it can turn (Mac picked this). Decor on its new front row
+// goes back into the bag and plots there are dropped, the same rule as the shop above.
+function clearCoopGround(st) {
+  const coop = (st.decor || []).find(d => d.id === 'coop'); if (!coop || !DECOR.coop) return;
+  const mine = new Set(cellsOf('coop', coop.x, coop.z, coop.r || 0)); let n = 0;
+  st.decor = st.decor.filter(d => {
+    if (d === coop || !DECOR[d.id] || !cellsOf(d.id, d.x, d.z, d.r).some(k => mine.has(k))) return true;
+    st.inv['decor_' + d.id] = (st.inv['decor_' + d.id] || 0) + 1; n++; return false;
+  });
+  const before = (st.plots || []).length;
+  st.plots = (st.plots || []).filter(p => !mine.has(p.x + ',' + p.z));
+  n += before - st.plots.length;
+  if (n) setTimeout(() => toast('Some things went back to your bag to make room for the coop.'), 4000);
+}
+clearCoopGround(S);
 // town level arrived in 0.1.22: older saves start with XP for what they've already done (no level-up card),
 // and any pinned order for a crop that isn't unlocked yet is swapped for a fresh one
 function seedLevel(st) {

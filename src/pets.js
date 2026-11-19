@@ -133,6 +133,13 @@ function buildDoghouse(r = 0) {
   g.add(mesh(new THREE.BoxGeometry(0.5, 0.5, 0.04), dark, 0, 0.25, cz + D / 2 + 0.005));
   const arch = mesh(new THREE.CylinderGeometry(0.25, 0.25, 0.04, 12, 1, false, 0, Math.PI), dark, 0, 0.5, cz + D / 2 + 0.005); arch.rotation.set(Math.PI / 2, 0, Math.PI / 2); g.add(arch);
   const m = mesh(new THREE.BoxGeometry(0.95, 0.05, 0.7), mat(0xe9c98f), 0, 0.03, MAT_Z); m.castShadow = false; m.receiveShadow = true; g.add(m);
+  // a water bowl and a food bowl down the right side, a bone on the left (Mac, v0.1.95: mockup C plus the bone). Looks only.
+  const bowl = (x, z, fill) => { const b = mesh(new THREE.CylinderGeometry(0.15, 0.11, 0.09, 12), mat(0xd0483c), x, 0.045, z); g.add(b); const w = mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.02, 12), mat(fill, { flatShading: false }), x, 0.085, z); w.castShadow = false; g.add(w); };
+  bowl(0.74, 0.74, 0x57b8e6); bowl(0.74, 0.36, 0x9a6a3c);
+  const bone = new THREE.Group(), bm = mat(0xfff3d6, { flatShading: false });
+  const bar = mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.26, 8), bm); bar.rotation.z = Math.PI / 2; bone.add(bar);
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) bone.add(mesh(new THREE.SphereGeometry(0.055, 8, 6), bm, sx * 0.14, 0, sz * 0.04));
+  bone.position.set(-0.74, 0.055, 0.62); bone.rotation.y = 0.5; g.add(bone);
   return top;
 }
 function buildCrate() {

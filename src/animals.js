@@ -56,11 +56,11 @@ const roomOf = (Hm) => Hm.holds() - birdsOf(Hm).length;
 ITEMS.egg = { name: ANIMALS.egg.name, kind: 'crop', rarity: 'common', price: ANIMALS.egg.price };   // 'crop' so the bag, Higgins, orders and the ship's crates take it as-is
 ITEMS.feed = { name: 'Chicken feed', kind: 'feed', rarity: 'common', price: 2, buy: ANIMALS.feed.buy };
 // the coop is decor that builds its own model and can't be turned (decision 49)
-DECOR.coop = { name: 'Chicken coop', model: ['town', 'wall-wood', 1], size: [3, 2], buy: ANIMALS.coop.buy, level: ANIMALS.level, fixed: true, build: () => buildCoop(A.S.animals && A.S.animals.v === 2 ? A.S.animals.lv : 1) };
+DECOR.coop = { name: 'Chicken coop', model: ['town', 'wall-wood', 1], size: [3, 3], buy: ANIMALS.coop.buy, level: ANIMALS.level, turns: [0, 1, 3], build: (r) => turned(buildCoop(A.S.animals && A.S.animals.v === 2 ? A.S.animals.lv : 1), r, COOP_BACK) };   // a square, so it can turn: door to the front, right or left, never the back (Mac, v0.1.95)
 ITEMS.decor_coop = { name: DECOR.coop.name, kind: 'decor', rarity: 'common', price: Math.round(ANIMALS.coop.buy / 2), buy: ANIMALS.coop.buy, decor: 'coop' };
 LEVELS[ANIMALS.level].push({ decor: 'coop' });   // shows on the town level roadmap
 ITEMS.duckegg = { name: ANIMALS.duck.egg.name, kind: 'crop', rarity: 'common', price: ANIMALS.duck.egg.price };
-DECOR.pond = { name: 'Duck pond', model: ['town', 'fountain-round', 1], size: [2, 2], buy: ANIMALS.duck.pond, level: ANIMALS.duck.level, fixed: true, build: () => buildPond(A.S.animals && A.S.animals.v === 2 ? A.S.animals.lvD || 1 : 1) };
+DECOR.pond = { name: 'Duck pond', model: ['town', 'fountain-round', 1], size: [2, 2], buy: ANIMALS.duck.pond, level: ANIMALS.duck.level, turns: [0, 1, 3], build: (r) => turned(buildPond(A.S.animals && A.S.animals.v === 2 ? A.S.animals.lvD || 1 : 1), r, 0) };
 ITEMS.decor_pond = { name: DECOR.pond.name, kind: 'decor', rarity: 'common', price: Math.round(ANIMALS.duck.pond / 2), buy: ANIMALS.duck.pond, decor: 'pond' };
 LEVELS[ANIMALS.duck.level].push({ decor: 'pond' });
 STORE.extra = { label: 'Animals', items: nellItems() };
@@ -123,6 +123,11 @@ function addBird(chick, duck) {
 // level 1 the little hutch, level 2 the long hutch, level 3 the barn (bigger pieces, red roof)
 const SHAPE = (lv) => { const T = A.SCALE.town * (lv === 3 ? 0.62 : 0.5), n = lv === 1 ? 1 : 2, x0 = lv === 1 ? -0.3 : -T / 2;
   return { T, n, x0, up: 0.22, doorX: x0, hw: lv === 1 ? 0.95 : n * T / 2 + 0.25, hz: T / 2 + 0.08, nestX: (lv === 1 ? x0 + T / 2 : T) + 0.2, troughX: x0 - (lv === 1 ? 0.78 : 0.2), troughZ: T / 2 + (lv === 1 ? 0.3 : 0.75) }; };
+// Homes turn like the doghouse (Mac, v0.1.95). r counts quarter turns: 0 = front to the camera, 1 = to the right, 3 = to the left.
+// The coop's hut sits half a square back from the middle of its 3 x 3 footprint, so the ramp and trough are inside it.
+const COOP_BACK = -0.5;
+const turn = (dx, dz, r) => { const a = (r || 0) * Math.PI / 2, c = Math.cos(a), n = Math.sin(a); return [dx * c + dz * n, -dx * n + dz * c]; };
+function turned(model, r, back) { const g = new THREE.Group(); model.position.z = back; g.add(model); g.rotation.y = (r || 0) * Math.PI / 2; const top = new THREE.Group(); top.add(g); return top; }
 function buildCoop(lv) {
   const g = new THREE.Group(), s = SHAPE(lv), { T, up } = s, hut = new THREE.Group();
   const piece = (name, x, y, r) => { const o = A.M.town[name].scene.clone(true); o.scale.setScalar(T); o.position.set(x, y, 0); o.rotation.y = r; hut.add(o); return o; };
@@ -167,14 +172,17 @@ function redRoof(g) {
 // keep up with the save: which homes are placed, where, how big, and who lives in them
 function sync() {
   const a = st(), cr = coopRec(), pr = pondRec();
-  const now = [cr ? cr.x + ',' + cr.z : '-', pr ? pr.x + ',' + pr.z : '-', a.lv, a.lvD || 1, a.birds.map(b => (b.chick ? 'c' : 'h') + (b.k || '') + b.c).join('')].join('|');
+  const now = [cr ? cr.x + ',' + cr.z + ',' + (cr.r || 0) : '-', pr ? pr.x + ',' + pr.z + ',' + (pr.r || 0) : '-', a.lv, a.lvD || 1, a.birds.map(b => (b.chick ? 'c' : 'h') + (b.k || '') + b.c).join('')].join('|');
   if (now === sig) return;
   sig = now;
-  if (cr) { const s = SHAPE(a.lv), x = cr.x + 1.5, z = cr.z + 1, y = A.groundY(x, z);
-    HOMES.coop.at = { x, z, y, s, nest: { x: x + s.nestX, y: y + s.up + 0.2, z: z + 0.1 }, door: { x: x + s.doorX, z: z + s.T / 2 + 0.7 }, top: s.up + s.T * 1.55, trough: { x: x + s.troughX, z: z + s.troughZ }, yard: { x, z: z + 2.7 } };
+  // x, z is the middle of the hut (or the pond); every spot is measured from there and turned with the building
+  if (cr) { const s = SHAPE(a.lv), r = cr.r || 0, [bx, bz] = turn(0, COOP_BACK, r), x = cr.x + 1.5 + bx, z = cr.z + 1.5 + bz, y = A.groundY(x, z);
+    const at = (dx, dz) => { const [tx, tz] = turn(dx, dz, r); return { x: x + tx, z: z + tz }; };
+    HOMES.coop.at = { x, z, y, s, r, hw: r % 2 ? s.hz : s.hw, hz: r % 2 ? s.hw : s.hz, nest: { ...at(s.nestX, 0.1), y: y + s.up + 0.2 }, door: at(s.doorX, s.T / 2 + 0.7), top: s.up + s.T * 1.55, trough: at(s.troughX, s.troughZ), yard: at(0, 2.7) };
   } else HOMES.coop.at = null;
-  if (pr) { const x = pr.x + 1, z = pr.z + 1, y = A.groundY(x, z);                 // the reed nest is at the pond's front left, the feed bowl at its front right
-    HOMES.pond.at = { x, z, y, nest: { x: x - 0.76, y: y + 0.1, z: z + 0.78 }, door: { x: x - 0.76, z: z + 1.3 }, top: 0.8, trough: { x: x + 0.76, z: z + 0.8 }, yard: { x, z: z + 1.6 } };
+  if (pr) { const r = pr.r || 0, x = pr.x + 1, z = pr.z + 1, y = A.groundY(x, z);                 // the reed nest is at the pond's front left, the feed bowl at its front right
+    const at = (dx, dz) => { const [tx, tz] = turn(dx, dz, r); return { x: x + tx, z: z + tz }; };
+    HOMES.pond.at = { x, z, y, r, hw: r % 2 ? 0.8 : 0.95, hz: r % 2 ? 0.95 : 0.8, nest: { ...at(-0.76, 0.78), y: y + 0.1 }, door: at(-0.76, 1.3), top: 0.8, trough: at(0.76, 0.8), yard: at(0, 1.6) };
   } else HOMES.pond.at = null;
   C = HOMES.coop.at; pond = HOMES.pond.at;
   advance(Date.now());
@@ -184,7 +192,7 @@ function sync() {
 // the coop is solid, like the shop
 export function block(np, pos) {
   if (!C) return;
-  const hit = (x, z) => Math.abs(x - C.x) < C.s.hw + 0.2 && Math.abs(z - C.z) < C.s.hz + 0.22;
+  const hit = (x, z) => Math.abs(x - C.x) < C.hw + 0.2 && Math.abs(z - C.z) < C.hz + 0.22;
   if (!hit(np.x, np.z)) return;
   if (!hit(np.x, pos.z)) np.z = pos.z; else if (!hit(pos.x, np.z)) np.x = pos.x; else { np.x = pos.x; np.z = pos.z; }
 }
@@ -347,7 +355,7 @@ function pickTarget(h) {
   }
   h.tx = Y.x; h.tz = Y.z;
 }
-const inCoop = (x, z, pad) => !!C && Math.abs(x - C.x) < C.s.hw + pad && Math.abs(z - C.z) < C.s.hz + pad;
+const inCoop = (x, z, pad) => !!C && Math.abs(x - C.x) < C.hw + pad && Math.abs(z - C.z) < C.hz + pad;
 
 function walk(h, dt, speed) {
   const dx = h.tx - h.x, dz = h.tz - h.z, d = Math.hypot(dx, dz);
@@ -472,7 +480,7 @@ function drawFill() {
   for (const Hm of Object.values(HOMES)) {
     const f = Hm.fill; if (!f) continue;
     f.visible = !!Hm.at && feedOf(Hm) > 0; if (!f.visible) continue;
-    f.position.set(Hm.at.trough.x, Hm.at.y + (Hm.duck ? 0.06 : 0.085), Hm.at.trough.z); f.scale.y = Math.max(0.08, feedOf(Hm) / troughCapOf(Hm));
+    f.position.set(Hm.at.trough.x, Hm.at.y + (Hm.duck ? 0.06 : 0.085), Hm.at.trough.z); f.rotation.y = (Hm.at.r || 0) * Math.PI / 2; f.scale.y = Math.max(0.08, feedOf(Hm) / troughCapOf(Hm));
   }
 }
 function takeNest(Hm) {
@@ -531,7 +539,7 @@ export function tap(x, y) {
   if (!ray) ray = { r: new THREE.Raycaster(), n: new THREE.Vector2(), b: new THREE.Box3() };
   ray.n.set(x / innerWidth * 2 - 1, -(y / innerHeight) * 2 + 1); ray.r.setFromCamera(ray.n, A.camera);
   for (const Hm of Object.values(HOMES)) { const at = Hm.at; if (!at) continue;
-    const hw = Hm.duck ? 0.95 : at.s.hw, hz = Hm.duck ? 0.8 : at.s.hz, hh = Hm.duck ? 0.25 : at.s.up + at.s.T * 1.5;
+    const hw = at.hw, hz = at.hz, hh = Hm.duck ? 0.25 : at.s.up + at.s.T * 1.5;
     ray.b.min.set(at.x - hw, at.y, at.z - hz); ray.b.max.set(at.x + hw, at.y + hh, at.z + hz);
     if (ray.r.ray.intersectsBox(ray.b)) { openCard(Hm); return true; } }
   return false;
