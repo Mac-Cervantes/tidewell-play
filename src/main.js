@@ -705,7 +705,8 @@ function syncPuppet(b) {
 function syncPuppets() {
   // ANIM: after the copy, stand upright while idle (anim.posture); fishing and farm tools keep their own poses
   const busy = farm.mode !== 'off' ? 2 : fishing.state !== 'idle' || rodState.w > 0.01 ? 1 : 0;
-  for (const b of [body, higgins && higgins.b, fishel && fishel.b, rosa && rosa.b, pike && pike.b]) if (b && b.root.visible) { syncPuppet(b); anim.posture(b, b === body ? busy : 0); }
+  for (const b of [body, higgins && higgins.b, fishel && fishel.b, rosa && rosa.b, pike && pike.b]) if (b && b.root.visible) { syncPuppet(b); anim.posture(b, b === body ? busy : pike && b === pike.b ? 1 : 0); }
+  placePikeRod();
   // hanging from a farm tool: the dummy's arms are shorter than the rig's, so lift it until its hands meet the handle
   const P = body && body.puppet; if (!P) return;
   const tm = farmToolMesh[farmSel()];
@@ -2505,9 +2506,9 @@ let pike = null;
 function makePike() {
   const b = makeBody('m'); b.root.visible = true;
   dressNPC(b, 'pike');
-  if (b.tools.rod) b.tools.rod.visible = true;
+  if (b.tools.rod) b.tools.rod.visible = false;                   // that one hangs off the hidden rig's fist, not the hand you see
   const pos = new THREE.Vector3(PIKE_AT.x, 0, PIKE_AT.z);
-  pike = { b, pos, yaw: PIKE_AT.yaw };
+  pike = { b, pos, yaw: PIKE_AT.yaw, rod: null, dir: new THREE.Vector3() };
   b.root.position.set(pos.x, groundY(pos.x, pos.z), pos.z); b.root.rotation.y = pike.yaw;
 }
 function updatePike(dt) {
@@ -2516,6 +2517,23 @@ function updatePike(dt) {
   const want = d < 3 ? Math.atan2(player.pos.x - pike.pos.x, player.pos.z - pike.pos.z) : PIKE_AT.yaw;   // only looks round when you're right beside him
   let a = want - pike.yaw; a = Math.atan2(Math.sin(a), Math.cos(a)); pike.yaw += a * Math.min(1, dt * 3);
   pike.b.root.rotation.y = pike.yaw; anim.idleTick(pike.b, dt);
+  // He holds his rod in both hands, like you do while you wait for a bite (Mac, v0.1.100: "Old Pike isn't even holding the rod").
+  // The arms are solved on the rig here; the rod itself is put in the hand you see after the puppet copy (placePikeRod).
+  if (!pike.rod && worldRod) { pike.rod = worldRod.clone(true); pike.rod.visible = true; scene.add(pike.rod); }
+  const b = pike.b, K = b.H / 1.7, f = _pkF.set(Math.sin(pike.yaw), 0, Math.cos(pike.yaw)), right = _pkR.set(-Math.cos(pike.yaw), 0, Math.sin(pike.yaw));
+  b.root.updateMatrixWorld(true);
+  const grip = b.bones.Torso.getWorldPosition(new THREE.Vector3()).addScaledVector(f, 0.3 * K).addScaledVector(right, 0.04 * K); grip.y -= 0.1 * K;
+  const dir = pike.dir.copy(f).multiplyScalar(Math.cos(0.6)).add(_pv.set(0, Math.sin(0.6), 0)).normalize();
+  solveArm(b, 'R', grip, new THREE.Vector3(0, -1, 0).addScaledVector(right, 0.6), 1);
+  solveArm(b, 'L', grip.clone().addScaledVector(dir, 0.085 * K), new THREE.Vector3(0, -1, 0).addScaledVector(right, -0.6), 1);
+}
+const _pkF = new THREE.Vector3(), _pkR = new THREE.Vector3();
+function placePikeRod() {
+  if (!pike || !pike.rod || !pike.b.puppet) return;
+  const k = pike.b.puppet.k, a = k.getObjectByName('RightHandIndex1'), c = k.getObjectByName('RightHandThumb2'); if (!a || !c) return;
+  const fist = a.getWorldPosition(new THREE.Vector3()).add(c.getWorldPosition(_pv)).multiplyScalar(0.5), K = pike.b.H / 1.7;
+  pike.rod.position.copy(fist).addScaledVector(pike.dir, -0.08 * K);
+  pike.rod.quaternion.setFromUnitVectors(UPV, pike.dir); pike.rod.scale.setScalar(K);
 }
 const nearPike = () => pike && Math.hypot(player.pos.x - pike.pos.x, player.pos.z - pike.pos.z) < 1.9;
 function talkPike() {   // just a short hello for now (Mac, v0.1.90); his orders menu, tips and hiring him are on the todo list
