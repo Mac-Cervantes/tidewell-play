@@ -2534,6 +2534,17 @@ function placePikeRod() {
   const fist = a.getWorldPosition(new THREE.Vector3()).add(c.getWorldPosition(_pv)).multiplyScalar(0.5), K = pike.b.H / 1.7;
   pike.rod.position.copy(fist).addScaledVector(pike.dir, -0.08 * K);
   pike.rod.quaternion.setFromUnitVectors(UPV, pike.dir); pike.rod.scale.setScalar(K);
+  // a line from the rod tip to a bobber sitting in the river mouth (Mac, v0.1.101). The bobber stays put when he turns to you.
+  if (!pike.line && fishLine && bobber) {
+    pike.line = fishLine.clone(); pike.bob = bobber.clone(true); pike.line.visible = pike.bob.visible = true; scene.add(pike.line, pike.bob);
+    pike.bobAt = new THREE.Vector3(PIKE_AT.x + Math.sin(PIKE_AT.yaw) * 2.3, WATER_Y, PIKE_AT.z + Math.cos(PIKE_AT.yaw) * 2.3);
+  }
+  if (!pike.line) return;
+  pike.rod.updateMatrixWorld(true);
+  const tip = pike.rod.localToWorld(_pkF.set(0, 1.28, 0));
+  pike.bob.position.copy(pike.bobAt); pike.bob.position.y += Math.sin(performance.now() / 700) * 0.012;
+  const d = _pkR.copy(pike.bob.position).sub(tip), len = d.length();
+  pike.line.position.copy(tip); pike.line.scale.set(1, len, 1); pike.line.quaternion.setFromUnitVectors(UPV, d.normalize());
 }
 const nearPike = () => pike && Math.hypot(player.pos.x - pike.pos.x, player.pos.z - pike.pos.z) < 1.9;
 function talkPike() {   // just a short hello for now (Mac, v0.1.90); his orders menu, tips and hiring him are on the todo list
