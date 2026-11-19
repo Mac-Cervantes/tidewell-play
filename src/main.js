@@ -2513,9 +2513,7 @@ function makePike() {
 }
 function updatePike(dt) {
   if (!pike) return;
-  const d = Math.hypot(player.pos.x - pike.pos.x, player.pos.z - pike.pos.z);
-  const want = d < 3 ? Math.atan2(player.pos.x - pike.pos.x, player.pos.z - pike.pos.z) : PIKE_AT.yaw;   // only looks round when you're right beside him
-  let a = want - pike.yaw; a = Math.atan2(Math.sin(a), Math.cos(a)); pike.yaw += a * Math.min(1, dt * 3);
+  // he never turns to you, not even when you talk: eyes on the water, concentrating (Mac, v0.1.102)
   pike.b.root.rotation.y = pike.yaw; anim.idleTick(pike.b, dt);
   // He holds his rod in both hands, like you do while you wait for a bite (Mac, v0.1.100: "Old Pike isn't even holding the rod").
   // The arms are solved on the rig here; the rod itself is put in the hand you see after the puppet copy (placePikeRod).
