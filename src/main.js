@@ -3376,6 +3376,33 @@ document.getElementById('resetReal').addEventListener('click', (e) => {
 // point at the other slot, or the save was just erased on purpose. (Bug since v0.1.0; fixed v0.1.10.)
 let leaving = false;
 function reloadNow() { leaving = true; location.reload(); }
+// Mac's way into debug on the players' copy (v0.1.96): tap the version in Settings 7 times, type the code. The code is kept
+// as a SHA-256 hash, so the word isn't in the public files. It stays unlocked on this phone until "Lock debug".
+const DEV_HASH = '9ed1515819dec61fd361d5fdabb57f41ecce1a5fe1fe263b98c0d6943b9b232e';
+{
+  const ver = document.getElementById('setVersion'), box = document.getElementById('codeBox'), inp = document.getElementById('codeIn'), lock = document.getElementById('devLock');
+  let taps = 0, tapAt = 0, unlocked = false;
+  try { unlocked = localStorage.getItem('tidewell.dev') === '1'; } catch (e) { /* no storage here */ }
+  box.hidden = true; box.style.display = 'none'; lock.hidden = !unlocked;
+  ver.addEventListener('click', () => {
+    const now = Date.now(); taps = now - tapAt < 1500 ? taps + 1 : 1; tapAt = now;
+    if (taps >= 7 && PLAYER) { taps = 0; box.hidden = false; box.style.display = 'flex'; inp.value = ''; inp.focus(); }
+  });
+  const tryCode = async () => {
+    let hex = '';
+    try { const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(inp.value.trim().toLowerCase())); hex = [...new Uint8Array(d)].map(b => b.toString(16).padStart(2, '0')).join(''); } catch (e) { /* no crypto here */ }
+    if (hex !== DEV_HASH) { inp.value = ''; toast('Nope'); return; }
+    try { localStorage.setItem('tidewell.dev', '1'); } catch (e) { toast('Can\'t save that here'); return; }
+    reloadNow();
+  };
+  document.getElementById('codeGo').addEventListener('click', tryCode);
+  inp.addEventListener('keydown', e => { if (e.key === 'Enter') tryCode(); });
+  lock.addEventListener('click', () => {
+    try { localStorage.removeItem('tidewell.dev'); } catch (e) { /* nothing to remove */ }
+    if (settings.debug) { settings.debug = false; storeSettings(settings); }
+    reloadNow();
+  });
+}
 function persistNow() { if (leaving) return; S.pos = [+player.pos.x.toFixed(2), +player.pos.z.toFixed(2)]; storeSave(S, settings.debug); }
 addEventListener('pagehide', persistNow);
 document.addEventListener('visibilitychange', () => { if (document.hidden) persistNow(); });
