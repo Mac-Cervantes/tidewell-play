@@ -734,7 +734,7 @@ function placeUI() {
     // the paw tag: small, only when you're right by the cat and it's standing still (it was big and rode along while the cat followed you; Mac, v0.1.93)
     const c = strays.cat, show = !!c && !quiet && (c.sp || 0) < 0.15 && Math.hypot(A.player.pos.x - c.x, A.player.pos.z - c.z) < 3.2;
     if (show) {
-      const n = pawsOf(); if (ui.paws.dataset.n !== String(n)) { ui.paws.dataset.n = String(n); ui.paws.innerHTML = [0, 1, 2, 3, 4].map(i => `<svg width="11" height="11" viewBox="0 0 24 24" fill="${i < n ? '#b9733b' : '#e9e2d4'}" stroke="${i < n ? '#2b2140' : '#b9b1c6'}" stroke-width="1.6" aria-hidden="true">${A.ICON.paw}</svg>`).join(''); ui.paws.setAttribute('aria-label', `${n} of 5 paws`); }
+      const n = pawsOf(); if (ui.paws.dataset.n !== String(n)) { ui.paws.dataset.n = String(n); ui.paws.innerHTML = [0, 1, 2, 3, 4].map(i => `<svg width="13" height="13" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z" fill="${i < n ? '#ff6f7d' : '#fff'}" stroke="${i < n ? '#2b2140' : '#b9b1c6'}" stroke-width="2.4" stroke-linejoin="round"/></svg>`).join(''); ui.paws.setAttribute('aria-label', `${n} of 5 hearts`); }
       const s = project(c.x, c.y + 0.72 * K.cat.length / 0.7, c.z); ui.paws.style.transform = `translate(${Math.round(s.x)}px, ${Math.round(s.y)}px) translate(-50%, -100%)`;
     }
     ui.paws.hidden = !show;
