@@ -344,22 +344,45 @@ export function frame(dt, elapsed) {
   placeUI();
 }
 
+// where the goldfish plays when it isn't the pet with you: a strip of shallow water along the beach, passing under the dock
+const SEA = { x0: -6.5, x1: 9.5, z0: -7.9, z1: -6.4 };
 function tickFish(p, R, dt, elapsed, night, held) {
   const P = A.player.pos, F = A.fishing, bowl = bedRec('fish');
   const away = !p.with || (night && !R.woke && !!bowl);
+  const toBowl = away && !!bowl && (night || p.with);            // the bowl is its night bed; by day a fish that isn't with you plays in the sea (Mac, v0.1.104)
+  let jump = 0;
   let gy = A.floorY(R.x, R.z) + K.fish.height, scale = 1, showBub = true;
   R.doze = false; R.out = false;
-  if (away && bowl) {                                             // in its bowl: paddling by day, asleep at night
+  if (toBowl) {                                                   // in its bowl: asleep at night
     const bx = bowl.x + 0.5, bz = bowl.z + 0.5, d = Math.hypot(bx - R.x, bz - R.z);
     if (!R.inBowl) { if (d > 14) { R.x = bx; R.z = bz; } step(R, bx, bz, Math.min(6, 1.5 + d * 2), dt, true); if (d < 0.12) { R.inBowl = true; A.addSplash(bx, bz, true); } gy = A.floorY(R.x, R.z) + Math.max(K.fish.height, BOWL_Y + 0.45 * Math.min(1, 2 / (d + 0.01))); }
     if (R.inBowl) { const a = elapsed * (night ? 0 : 0.9); R.x = bx + Math.cos(a) * 0.05; R.z = bz + Math.sin(a) * 0.05; if (!night) R.yaw = -a; gy = A.groundY(bx, bz) + BOWL_Y; scale = 0.72; showBub = false; R.doze = night; R.sp = 0; }
     R.swim = false;
-  } else if (away) {                                              // at home, but no bowl placed: waits on the sand by the dock
-    const h = waitSpot('fish'), d = Math.hypot(h.x - R.x, h.z - R.z);
-    if (d > 16) { R.x = h.x; R.z = h.z; } else if (d > 0.1) step(R, h.x, h.z, Math.min(5, 1.2 + d * 2), dt, true); else stand(R, dt);
-    R.inBowl = false;
+  } else if (away) {                                              // not the pet with you: it plays in the shallows along the beach, on its own
+    if (R.inBowl) { R.inBowl = false; A.addSplash(R.x, R.z, true); }
+    const sea = R.sea || (R.sea = { gx: 0, gz: 0, t: 0, next: rnd(5, 10), j: 0 });
+    const inLane = R.z < SEA.z1 + 0.25;
+    showBub = false; R.swim = true;
+    if (!inLane && !R.wet) {                                      // on its way out: flies to the water's edge and drops in
+      const tx = Math.max(SEA.x0, Math.min(SEA.x1, R.x)), d = Math.hypot(tx - R.x, SEA.z1 - R.z);
+      if (d > 16) { R.x = tx; R.z = SEA.z1; } else step(R, tx, SEA.z1, Math.min(6, 1.6 + d * 2), dt, true);
+      gy = Math.max(A.floorY(R.x, R.z), A.WATER_Y) + K.fish.height + 0.2; showBub = true;
+    } else {
+      if (!R.wet) { R.wet = true; A.addSplash(R.x, R.z); sea.t = 0; }
+      gy = A.WATER_Y - 0.03;
+      if (night) { R.doze = true; R.sp = 0; }                      // asleep in the shallows
+      else {
+        sea.t -= dt;
+        if (sea.t <= 0 || Math.hypot(sea.gx - R.x, sea.gz - R.z) < 0.25) { sea.gx = rnd(SEA.x0, SEA.x1); sea.gz = rnd(SEA.z0, SEA.z1); sea.t = rnd(4, 9); }
+        step(R, sea.gx, sea.gz, sea.j > 0 ? 2.4 : 1.1, dt, true);
+        sea.next -= dt;                                            // every so often it leaps clear of the water
+        if (sea.next <= 0 && sea.j <= 0) { sea.j = 1; sea.next = rnd(7, 14); A.addSplash(R.x, R.z); { const far = Math.hypot(P.x - R.x, P.z - R.z); if (far < 8) A.audio.play('plop', 0.3 * (1 - far / 8)); } }   // a soft plop, softer the farther you are (Mac: "not as loud")
+        if (sea.j > 0) { sea.j = Math.max(0, sea.j - dt / 0.8); jump = Math.sin((1 - sea.j) * Math.PI); gy = A.WATER_Y - 0.03 + jump * 0.75; if (sea.j === 0) A.addSplash(R.x, R.z); }
+      }
+    }
   } else {
     if (R.inBowl) { R.inBowl = false; A.addSplash(R.x, R.z, true); }
+    if (R.sea) { R.sea = null; if (R.wet) { R.wet = false; A.addSplash(R.x, R.z); } }
     R.out = true;
     const fishingNow = (F.state === 'wait' || F.state === 'bite') && F.land;
     if (held && !R.swim && !R.wet) { stand(R, dt); face(R, P.x, P.z, dt); }
@@ -381,7 +404,7 @@ function tickFish(p, R, dt, elapsed, night, held) {
       }
     }
   }
-  R.y += (gy - R.y) * Math.min(1, dt * (R.wet || R.inBowl ? 7 : 4));
+  R.y += (gy - R.y) * Math.min(1, dt * (jump > 0 ? 20 : R.wet || R.inBowl ? 7 : 4));
   R.k1 += (scale - R.k1) * Math.min(1, dt * 6);
   const bob = held ? 0 : R.doze ? Math.sin(elapsed * 1.1) * 0.015 : R.inBowl || R.wet ? Math.sin(elapsed * 2.4) * 0.012 : Math.sin(elapsed * 2.2) * 0.05;
   R.g.position.set(R.x, R.y + bob, R.z); R.g.scale.setScalar(R.k1);
@@ -389,7 +412,7 @@ function tickFish(p, R, dt, elapsed, night, held) {
   if (R.spin > 0) R.spin = Math.max(0, R.spin - dt / 0.8);
   const ease = (t) => t * t * (3 - 2 * t);
   R.g.rotation.set(0, R.yaw + ease(1 - R.spin) * Math.PI * 4 * (R.spin > 0 ? 1 : 0), 0);
-  R.fish.rotation.x = -ease(1 - R.loop) * Math.PI * 2 * (R.loop > 0 ? 1 : 0) + (R.doze ? 0.25 : 0);
+  R.fish.rotation.x = -ease(1 - R.loop) * Math.PI * 2 * (R.loop > 0 ? 1 : 0) + (R.doze ? 0.25 : 0) + (R.sea && R.sea.j > 0 ? (R.sea.j - 0.5) * -1.6 : 0);   // nose up on the way out of a leap, down on the way in
   R.fish.rotation.z = R.doze ? 0.35 : 0;
   R.tail.rotation.y = Math.sin(elapsed * (R.doze ? 1.5 : 6 + R.sp * 3)) * (R.doze ? 0.12 : 0.35 + Math.min(0.3, R.sp * 0.08));
   R.bub.visible = showBub && R.k1 > 0.9; R.bub.rotation.y = -R.yaw;
@@ -534,6 +557,8 @@ export function pickUse() {
     if (canPet) return { kind: 'collect', key: 'catPet', icon: 'hand', label: 'Pet', go: catPet };
     if (canGive) return { kind: 'collect', key: 'catGive', icon: 'petfish', label: 'Give', go: catGive };
   }
+  { const p = pet('fish'), R = rt.fish;                              // the goldfish out in the shallows: Come when you stand near it
+    if (p && R && !p.with && R.sea && R.wet && Math.hypot(P.x - R.x, P.z - R.z) < 3.2) return { kind: 'collect', key: 'petComefish', icon: 'walk', label: 'Come', go: () => setWith(p, true) }; }
   for (const p of st().list) {
     const R = rt[p.k]; if (!R || !(R.inBowl || R.atHome)) continue;
     if (Math.hypot(P.x - R.x, P.z - R.z) > 1.5) continue;
