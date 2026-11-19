@@ -120,10 +120,31 @@ export function createCargo(A) {
     el.style.display = on ? '' : 'none';
     if (on) { el.style.left = ((_cb.x + 1) / 2 * innerWidth + dx) + 'px'; el.style.top = ((1 - _cb.y) / 2 * innerHeight - lift) + 'px'; }
   }
+  // Debug (Mac, v0.1.103): watch the ship leave and come back without loading it. 5 seconds, sail out, 3 seconds away,
+  // sail in. Same animation, speed and bell as a real trip; the save is not touched.
+  let demo = null;
+  function demoTrip() {
+    if (!cargoReady || !A.merchant) return 'The ship is still loading';
+    if (demo || shipAnim) return 'The ship is already moving';
+    if (shipAway()) return 'The ship is away. Tap "Cargo: ship back now" first';
+    demo = { stage: 'count', t: 5, was: A.merchant.visible, said: 6 }; A.merchant.visible = true; return '';
+  }
+  function tickDemo(dt) {
+    if (!demo || shipAnim) return;
+    demo.t -= dt;
+    if (demo.stage === 'count') {
+      const n = Math.ceil(demo.t); if (n < demo.said && n > 0) { demo.said = n; toast('Ship leaves in ' + n); }
+      if (demo.t <= 0) { demo.stage = 'out'; audio.shipBell(); shipAnim = { t: 0, dur: 7, from: SHIP_AT, to: SHIP_OUT, done: () => { A.merchant.visible = false; demo.stage = 'gone'; demo.t = 3; } }; }
+    } else if (demo.stage === 'gone' && demo.t <= 0) {
+      demo.stage = 'in'; A.merchant.visible = true; audio.shipBell();
+      shipAnim = { t: 0, dur: 7, from: SHIP_IN, to: SHIP_AT, done: () => { A.merchant.visible = demo.was; demo = null; toast('Ship is back'); } };
+    }
+  }
   function tickCargo(dt) {
     if (!cargoReady) return;
+    tickDemo(dt);
     // the trip: once it's time, the ship sails back in and the pay waits in a chest on the dock
-    if (shipAway() && Date.now() >= S.cargo.back && !shipAnim) {
+    if (shipAway() && Date.now() >= S.cargo.back && !shipAnim && !demo) {
       S.cargo.back = 0; commit();
       A.merchant.visible = true; audio.shipBell(); shipAnim = { t: 0, dur: 7, from: SHIP_IN, to: SHIP_AT, done: () => { refreshCargo(); toast('The cargo ship is back! Your pay is on the dock.'); } };
     }
@@ -257,5 +278,5 @@ export function createCargo(A) {
 
   return { build: buildCargo, refresh: refreshCargo, ensure: ensureCargo, tick: tickCargo, open: openCargo, collect: collectCargo, renderHold,
     nearBox: nearCargo, nearNextBox, nearChest, boxes: cargoBoxes, capOf,
-    ready: () => cargoReady, sailing: () => !!shipAnim, stopSailing: () => { shipAnim = null; } };
+    ready: () => cargoReady, sailing: () => !!shipAnim, stopSailing: () => { shipAnim = null; demo = null; }, demoTrip };
 }

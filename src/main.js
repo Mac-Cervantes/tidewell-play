@@ -3349,6 +3349,7 @@ document.querySelectorAll('[data-dbg]').forEach(b => b.addEventListener('click',
     else { const s = lotSignPos(); player.pos.set(s.x + 1.1, 0, s.z - 1.2); toast(`Next lot: ${LOT_NAMES[l.id]}, ${lotPrice().toLocaleString()} coins, level ${lotLevel()}`); }
   }
   if (k === 'cargofill') { cargo.ensure(); if (S.level < CARGO.openLevel) { S.level = CARGO.openLevel; S.xp = Math.max(S.xp, 0); renderLevel(); } cargo.boxes().forEach((b, i) => { if (b.kind === 'star') { S.cargo.boxes[i] = { [S.cargo.star.item]: S.cargo.star.n }; } else S.cargo.boxes[i] = { [b.kind === 'crate' ? 'turnip' : 'sunfish']: cargo.capOf(b.kind, i) }; }); cargo.refresh(); commit(); toast('Hold filled'); }
+  if (k === 'cargodemo') { const no = cargo.demoTrip(); if (no) toast(no); else { document.getElementById('settings').hidden = true; toast('Ship leaves in 5'); } }
   if (k === 'cargoback') { cargo.ensure(); if (S.cargo.back) { S.cargo.back = Date.now() - 1; cargo.stopSailing(); merchant.visible = false; commit(); toast('The ship is on its way back'); } else toast('The ship is at the dock'); }
   if (k === 'tools') { S.tools = [...GEAR_ORDER]; if (S.level < 3) { S.level = 3; renderLevel(); } commit(); renderFarmTray(); refreshDig(); toast('All tools added'); }
   if (k === 'digreset') { S.dig = null; refreshDig(); commit(); toast('New dig spots'); }
