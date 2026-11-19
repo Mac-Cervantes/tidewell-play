@@ -705,6 +705,13 @@ function tickFx(dt) {
 }
 function project(x, y, z) { _v.p.set(x, y, z).project(A.camera); return { x: (_v.p.x + 1) / 2 * innerWidth, y: (1 - _v.p.y) / 2 * innerHeight, ok: _v.p.z < 1 }; }
 // the ring of buttons, each pet's Zzz and each stray's heart follow their owners on screen
+const zSprites = {}; let zTex = null;
+function zSprite(k) {
+  if (zSprites[k]) return zSprites[k];
+  if (!zTex) { const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d'); x.font = '96px "Apple Color Emoji", "Noto Color Emoji", "Segoe UI Emoji", sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('\u{1F4A4}', 64, 70); zTex = new THREE.CanvasTexture(c); zTex.colorSpace = THREE.SRGBColorSpace; }
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: zTex, transparent: true, depthWrite: false, fog: false })); sp.scale.setScalar(0.42); sp.visible = false; A.scene.add(sp);
+  return (zSprites[k] = sp);
+}
 function placeUI() {
   if (!ui) return;
   const quiet = A.busy() || !!sheet || !!card;
@@ -715,8 +722,10 @@ function placeUI() {
   }
   for (const k of ['fish', 'dog', 'cat']) {
     const R = rt[k], z = R && R.doze && !quiet;
-    if (z) { const s = project(R.x, R.y + (k === 'fish' ? 0.42 : k === 'cat' ? 0.5 : 0.6), R.z); ui.zzz[k].style.transform = `translate(${Math.round(s.x)}px, ${Math.round(s.y)}px) translate(-50%, -100%)`; }
-    ui.zzz[k].hidden = !z;
+    // a sleeping pet shows a small 💤 in the world, not a bubble on top of the screen, so you walk in front of it (Mac, v0.1.97)
+    if (z) { const sp = zSprite(k), t = performance.now() / 1000; sp.position.set(R.x + 0.16, R.y + (k === 'fish' ? 0.5 : k === 'cat' ? 0.58 : 0.68) + Math.sin(t * 1.6) * 0.03, R.z); sp.visible = true; }
+    else if (zSprites[k]) zSprites[k].visible = false;
+    ui.zzz[k].hidden = true;
     const at = strays[k] && k !== 'cat' ? strayAt(k) : null, h = at && !quiet && Math.hypot(A.player.pos.x - at.x, A.player.pos.z - at.z) < 12;
     if (h) { const s = project(at.x, k === 'fish' ? A.WATER_Y + 1.5 : A.floorY(at.x, at.z) + 1.25, at.z); ui.heart[k].style.transform = `translate(${Math.round(s.x)}px, ${Math.round(s.y)}px) translate(-50%, -100%)`; }
     ui.heart[k].hidden = !h;
