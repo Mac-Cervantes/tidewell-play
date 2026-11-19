@@ -5,7 +5,7 @@ import * as SkeletonUtils from '../lib/addons/utils/SkeletonUtils.js';
 import * as store from './store.js';   // STORE: the walk-in general store (the inside loads later from interior.js)
 import { mergeVertices } from '../lib/addons/utils/BufferGeometryUtils.js';
 import { createCargo } from './cargo.js';
-import { FERT, VERSION_LABEL, RARITY, FISH, CROPS, CROP_ORDER, ITEMS, SHOP, DEBUG, BAIT, BAIT_ORDER, DECOR, DECOR_ORDER, STARTER_KIT, ORDER_FOLK, ORDERS, makeOrder, orderFolk, CARGO, TOOLS as GEAR, TOOL_ORDER as GEAR_ORDER, CLEAR_NEEDS, HIT_SECONDS, DIG, XP, LEVELS, xpInto, levelFor, rankFor, unlockLevel, rollFish, seasonInfo, timeOfDay, SIGHTS, rollSize, RODS } from './data.js';
+import { FERT, VERSION, VERSION_LABEL, RARITY, FISH, CROPS, CROP_ORDER, ITEMS, SHOP, DEBUG, BAIT, BAIT_ORDER, DECOR, DECOR_ORDER, STARTER_KIT, ORDER_FOLK, ORDERS, makeOrder, orderFolk, CARGO, TOOLS as GEAR, TOOL_ORDER as GEAR_ORDER, CLEAR_NEEDS, HIT_SECONDS, DIG, XP, LEVELS, xpInto, levelFor, rankFor, unlockLevel, rollFish, seasonInfo, timeOfDay, SIGHTS, rollSize, RODS } from './data.js';
 import { paintSkin, SKIN, HAIR_COLORS, CLOTH } from './look.js';
 import { HAIR3D, hairFor } from './hair3d.js';
 import { wearList, wearFor, hairUnderHat, HATS } from './wear3d.js';
@@ -25,6 +25,7 @@ import * as tackle from './tackle.js';          // TACKLE (try/fishing): rods, c
 const FEATURES = { combat: false };
 // the version label lives in data.js only; fill every place it's shown
 for (const id of ['ver', 'loadVer']) document.getElementById(id).textContent = VERSION_LABEL;
+try { if (sessionStorage.getItem('tidewell.updating') === '1') { sessionStorage.removeItem('tidewell.updating'); document.getElementById('loadTxt').textContent = 'Updating the harbor…'; } } catch (e) { /* no storage: the usual text */ }
 
 // ---------- save state ----------
 let settings = loadSettings();
@@ -3433,6 +3434,54 @@ const DEV_HASH = '9ed1515819dec61fd361d5fdabb57f41ecce1a5fe1fe263b98c0d6943b9b23
 }
 function persistNow() { if (leaving) return; S.pos = [+player.pos.x.toFixed(2), +player.pos.z.toFixed(2)]; storeSave(S, settings.debug); }
 addEventListener('pagehide', persistNow);
+
+// ---------- an open game updates itself (v0.1.105) ----------
+// Mac: "Is there any way that we can force a reset so everybody playing has the latest without having to close their game?"
+// Only on the players' copy (github.io) and localhost, where sw.js runs. The claude.ai copy is moved on by its host.
+// The game reads the tiny version.json (written by tools/deploy-play.sh from VERSION) with caching off: 20 s after it starts
+// (which also catches a start that sw.js served from its saved copy), every 5 minutes, and whenever you come back to it.
+// A newer version is taken quietly at a safe moment: you just came back, or 20 s without a touch, and nothing is open.
+// It saves, reloads straight back into the game (no title screen), and never tries the same version twice in 10 minutes.
+const upd = { on: /github\.io$|^localhost$/.test(location.hostname), want: null, since: 0, touch: performance.now(), back: 0, busy: false };
+const updLab = () => Object.assign({ wait: 120, idle: 20, every: 300, show: 900 }, window.__updLab || {});   // seconds; tests shorten them
+const verNum = (v) => String(v).split('.').map(n => parseInt(n, 10) || 0);
+const verNewer = (a, b) => { const x = verNum(a), y = verNum(b); for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); return false; };
+async function updCheck() {
+  if (!upd.on || upd.busy) return; upd.busy = true;
+  try {
+    const r = await fetch('version.json?t=' + Date.now(), { cache: 'no-store' });
+    if (r.ok) { const v = (await r.json()).version; if (v && verNewer(v, VERSION) && upd.want !== v) { upd.want = v; upd.since = performance.now(); } }
+  } catch (e) { /* offline: try again later */ }
+  upd.busy = false;
+}
+function updSafe() {
+  return !busyForLevelCard() && !decor.on && fishing.state === 'idle' && !store.inside() && !document.body.classList.contains('inmenu') && document.getElementById('levelUp').hidden && !document.hidden;
+}
+function updTick() {
+  if (!upd.want) return;
+  const L = updLab(), now = performance.now();
+  if (now - upd.since < L.wait * 1000) return;                     // give the new files a moment to reach every server
+  const fresh = upd.back && now - upd.back < 4000 && upd.touch < upd.back, idle = now - upd.touch > L.idle * 1000;
+  if (!(fresh || idle) || !updSafe()) return;
+  let tried = null; try { tried = JSON.parse(sessionStorage.getItem('tidewell.updTried') || 'null'); } catch (e) { /* none */ }
+  if (tried && tried.v === upd.want && Date.now() - tried.at < 600000) return;   // that reload didn't bring it: don't loop
+  try { sessionStorage.setItem('tidewell.updTried', JSON.stringify({ v: upd.want, at: Date.now() })); sessionStorage.setItem('tidewell.skipMenu', '1'); } catch (e) { return; }
+  persistNow();
+  // go to the opening loading screen first, so it reads as "the game is updating" and not as a glitch (Mac, v0.1.106)
+  try { sessionStorage.setItem('tidewell.updating', '1'); } catch (e) { /* the plain text shows then */ }
+  upd.want = null;
+  const L0 = document.getElementById('loading');
+  document.getElementById('loadTxt').textContent = 'Updating the harbor…'; document.getElementById('loadBar').style.width = '0%';
+  L0.style.opacity = '0'; L0.hidden = false; L0.style.transition = 'opacity .45s'; requestAnimationFrame(() => { L0.style.opacity = '1'; });
+  setTimeout(reloadNow, updLab().show);
+}
+if (upd.on) {
+  addEventListener('pointerdown', () => { upd.touch = performance.now(); }, true);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) { upd.back = performance.now(); updCheck(); } });
+  setTimeout(updCheck, 20000);
+  setInterval(updCheck, updLab().every * 1000);
+  setInterval(updTick, 1000);
+}
 document.addEventListener('visibilitychange', () => { if (document.hidden) persistNow(); });
 
 // ---------- resize ----------

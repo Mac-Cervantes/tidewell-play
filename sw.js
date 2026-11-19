@@ -10,7 +10,8 @@ self.addEventListener('fetch', (e) => {
   if (req.method !== 'GET' || (host !== location.host && !/^fonts\.(googleapis|gstatic)\.com$/.test(host))) return;   // the game's own files and its font
   e.respondWith((async () => {
     const cache = await caches.open(CACHE);
-    const net = fetch(req).then((res) => { if (res.ok) cache.put(req, res.clone()); return res; });
+    // the game's own files skip the browser's cache (it may hold a copy up to 10 minutes old), so a reload really gets the newest (v0.1.105)
+    const net = (host === location.host ? fetch(req.url, { cache: 'no-cache', credentials: 'same-origin' }) : fetch(req)).then((res) => { if (res.ok) cache.put(req, res.clone()); return res; });
     const slow = new Promise((ok) => setTimeout(ok, 4000));
     try {
       const res = await Promise.race([net, slow.then(async () => (await cache.match(req)) || net)]);
