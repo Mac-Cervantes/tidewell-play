@@ -305,7 +305,8 @@ function mar(m, t, v) {                            // soft marimba: round, no bu
   tone({ t: t, f: f, dur: 0.38, a: 0.004, v: v, bus: sess, send: 0.25 });
   tone({ t: t, f: f * 4, dur: 0.06, a: 0.003, v: v * 0.25, bus: sess });
 }
-function shaker(t, v) { noise({ t: t, dur: 0.045, a: 0.004, v: v, ft: 'highpass', f: 6500, bus: sess }); }
+// No shaker in the music (Mac, Nov 19: "It's 10000% the shaker. Take it out."). On a phone speaker its short hiss
+// came out as a dry click that sounded like clipping.
 
 // ---------- the songs (original; 8 bars each, 8 steps to a bar) ----------
 var PC = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
@@ -352,7 +353,6 @@ function scheduleBar() {
       ch.forEach(function (m) { mar(m + 12, at(i), i === 5 ? 0.055 : 0.08); });
     });
     if (night) pad(ch, t0, barDur, 0.045, 800);
-    else for (var s = 0; s < 8; s++) shaker(at(s), s % 2 ? 0.02 : 0.01);
   } else {
     pad(ch, t0, barDur, night ? 0.05 : 0.042, night ? 800 : 1500);
     bass(ch[0], at(0), sd * 6, 0.12);
