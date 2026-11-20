@@ -56,6 +56,9 @@
   #hint span { background: rgba(43, 33, 64, 0.72); color: #fff; padding: 6px 12px; border-radius: 12px;
     font-size: 14px; font-weight: 600; }
   #hotbar:empty { display: none; }   /* no tools yet (the first goal) */
+  /* v0.1.119: on a narrow phone (360 px wide Androids) five tools ran under the menu button. The tools now shrink to fit
+     the space left of it: full size from about 390 px up, down to 38 px on a 320 px screen. */
+  #hotbar .slot { width: clamp(38px, calc((100vw - 116px) / 5), 56px); height: clamp(38px, calc((100vw - 116px) / 5), 56px); }
   #hotbar { left: max(6px, calc(50% - 192px)); bottom: calc(14px + env(safe-area-inset-bottom)); display: flex; gap: 5px;
     padding: 6px; background: rgba(43, 33, 64, 0.55); border-radius: 18px; pointer-events: auto; }
   .slot { position: relative; width: 56px; height: 56px; border-radius: 13px; border: 2px solid #2b2140; background: rgba(255, 252, 244, 0.95);

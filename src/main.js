@@ -1594,12 +1594,13 @@ undoBtn.addEventListener('click', () => {
   renderHotbar(); commit();
   toast('Undone');
 });
-// Undo sits just left of the action button (or the menu when there's no action), so the two never overlap (Mac)
+// Undo sits right above the action button (or above the menu when there's no action), so the two never overlap.
+// It was to the left until v0.1.119; Mac: "the undo button should be above the plant button".
 function placeUndo() {
   if (undoBtn.hidden) return;
   const ref = (!useBtn.hidden ? useBtn : document.getElementById('menuBtn')).getBoundingClientRect();
-  undoBtn.style.left = (ref.left - 64 - 12) + 'px';
-  undoBtn.style.top = (ref.top + ref.height / 2 - 32) + 'px';
+  undoBtn.style.left = Math.min(innerWidth - 70, ref.left + ref.width / 2 - 32) + 'px';
+  undoBtn.style.top = (ref.top - 64 - 10) + 'px';
 }
 // Undo is for the slip you just made: it goes away 12 s after the action, and it stays hidden during the first ten goals.
 // (A playtester tapped it long after planting, which pulled up their tutorial turnip and sent them back to the start. Mac, v0.1.79)
