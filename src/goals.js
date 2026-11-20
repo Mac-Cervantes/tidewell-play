@@ -41,7 +41,7 @@ const RULES = {
   water:   { poll: (S) => S.plots.some(p => p.crop && p.watered != null),
              ui: (S) => { const p = S.plots.find(q => q.crop); return p ? farmStep('can', () => plotAt(p)) : S.plots.length ? seedStep() : tillStep(); } },
   worms:   { on: 'worms', use: ['Take'], at: () => ({ ...A.bucketPos(), ring: true, h: 1.1 }), skip: () => A.bucketCount() <= 0 },
-  catch:   { start: (S, g) => { g.base = total(S); }, poll: (S, g) => total(S) > (g.base || 0), use: ['Cast', 'Reel!'],
+  catch:   { start: (S, g) => { g.base = total(S); }, poll: (S, g) => total(S) > (g.base || 0), use: ['Cast', 'Reel!', 'Reel'],
              ui: () => isOn(slot('rod')) ? null : slot('rod'),
              at: () => A.fishing.state === 'idle' ? { x: A.DOCK.x - 0.45, z: -6.5, via: [{ x: A.DOCK.x, z: -3.4 }], ring: true, h: 1.3 } : null },
   book:    { poll: () => vis('fishBook'), ui: () => vis('menu') ? byId('menuFish') : byId('menuBtn') },

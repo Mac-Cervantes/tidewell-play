@@ -1,7 +1,7 @@
 // Tidewell game data. Everything tunable lives here as plain tables so it can be
 // exported to JSON for the Unity version later (see tools/export-data.mjs).
 
-export const VERSION = '0.1.106';
+export const VERSION = '0.1.118';
 export const VERSION_LABEL = 'BETA v' + VERSION;
 
 // Rarity tiers (decision 36). `weight` is the base chance per bite with worms.
@@ -358,7 +358,7 @@ export const GOALS = [
   { id: 'plant',   title: 'Till a plot and plant your turnip seeds', pic: 'seeds',  prize: { coins: 10 }, hint: 'Open Farm tools, drag the hoe over grass, then tap your seeds and Plant.' },
   { id: 'water',   title: 'Water your turnips',                      pic: 'can',    prize: { coins: 10 }, hint: 'Open Farm tools, pick the watering can and drag it over your turnips.' },
   { id: 'worms',   title: 'Take worms from the bucket by Fishel',    pic: 'worm',   prize: { item: 'worm', n: 5 }, hint: 'The bucket is beside Fishel\u2019s stall. Walk up and tap Take.' },
-  { id: 'catch',   title: 'Catch a fish',                            pic: 'fish',   prize: { coins: 20 }, hint: 'Take your rod to the dock, tap Cast, then tap Reel! when it bites.' },
+  { id: 'catch',   title: 'Catch a fish',                            pic: 'fish',   prize: { coins: 20 }, hint: 'Take your rod to the dock and tap Cast. When it bites, hold Reel! until the bar is full.' },
   { id: 'book',    title: 'Open your Fish Book',                     pic: 'book',   prize: { coins: 10 }, hint: 'Tap the menu button, then Fish Book.' },
   { id: 'sell',    title: 'Sell your fish to Higgins',               pic: 'coin',   prize: { coins: 20 }, hint: 'Talk to Higgins and tap Sell everything.' },
   { id: 'bench',   title: 'Place your bench',                        pic: 'bench',  prize: { item: 'decor_flowers', n: 2 }, hint: 'Tap the house button, pick the bench and tap Place.' },
@@ -404,3 +404,30 @@ export const PETS = {
 // Priced well above what a plot earns in that time (about 13 coins per 10 minutes), so it can't be looped for coins and works as a money sink.
 export const FERT = { minutes: 10, pack: 5, buy: 250 };   // 50 a bag since v0.1.86 (was 20): Mac wants it to be a real money sink
 ITEMS.fertilizer = { name: 'Fertilizer', kind: 'fert', rarity: 'common', price: 0, buy: FERT.buy / FERT.pack };
+
+// REEL: red light, green light (Mac, v0.1.112). After you tap Reel! you hold to wind the fish in while the bar over your
+// head is GREEN. Now and then the fish thrashes: a short YELLOW warning, then RED. Let go on red; keep holding and the line
+// snaps (the fish and the bait are gone). Rarer fish take longer and go red more often and for longer. A common fish never does.
+//   secs: seconds of clean reeling to land it · nibbles: [fewest, most] fake nibbles before the real bite
+//   gap: [shortest, longest] green seconds between reds · thrashLen: [shortest, longest] seconds a red lasts
+// Both are picked fresh for every red, and the ranges widen with rarity (Mac, v0.1.117), so a legendary is the least predictable.
+// Keep every red longer than REEL_RULES.grace, or holding through a short one would be safe.
+export const REEL = {
+  common:    { secs: 3,   nibbles: [0, 1] },
+  uncommon:  { secs: 4.5, nibbles: [0, 2], gap: [1.6, 2.4], thrashLen: [0.8, 1.0] },
+  rare:      { secs: 5.5, nibbles: [1, 2], gap: [1.5, 2.8], thrashLen: [0.8, 1.3] },
+  super:     { secs: 6.5, nibbles: [1, 3], gap: [1.2, 2.8], thrashLen: [0.8, 1.6] },
+  legendary: { secs: 8,   nibbles: [2, 3], gap: [0.9, 2.8], thrashLen: [0.8, 2.0] },
+};
+export const REEL_RULES = {
+  start: 0.12,      // the bar starts a little full
+  calm: 1.1,        // no moves in the first seconds of a fight
+  warn: 0.6,        // seconds of yellow before a red
+  grace: 0.7,       // seconds you may keep holding on red before the line snaps
+  redSlip: 0.04,    // bar lost per second while you let the fish run on red
+  slip: 0.07,       // bar lost per second while the line is slack on green
+  slackMax: 5,      // seconds of slack line before the fish gets away
+  rodBoost: 0.25,   // the better rods wind this much faster in their own water
+  nibWin: 0.7,      // seconds a nibble lasts (a tap in here is too early)
+  nibGap: 1.0,      // least seconds between nibbles, and before the real bite
+};

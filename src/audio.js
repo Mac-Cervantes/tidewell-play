@@ -106,8 +106,10 @@ function rasp(t, f1, f2, dur) {          // one saw stroke: buzzing filtered noi
 // ---------- sound effects ----------
 var S = {
   stepGrass: function (t) {
-    noise({ t: t, dur: 0.09, a: 0.012, v: 0.15, f: rnd(2200, 3000), q: 0.7 });
-    noise({ t: t + 0.01, dur: 0.05, v: 0.05, ft: 'lowpass', f: 600 });
+    // v0.1.108 (Mac: "sfx need the shaker sound gone too"): no short bright hiss. A phone speaker turns it into the same
+    // dry click as the music's shaker did. A grass step is now a soft low rustle. The rule for every sound here:
+    // no noise burst shorter than about 0.1 s with its energy above about 1.5 kHz.
+    noise({ t: t, dur: 0.12, a: 0.02, v: 0.16, ft: 'lowpass', f: rnd(800, 1000), fto: 420 });
   },
   stepSand: function (t) {
     noise({ t: t, dur: 0.14, a: 0.02, v: 0.22, ft: 'lowpass', f: rnd(1000, 1400), fto: 500 });
@@ -115,7 +117,6 @@ var S = {
   stepDock: function (t) {
     tone({ t: t, f: rnd(210, 250), to: 130, dur: 0.09, v: 0.22 });
     tone({ t: t, f: rnd(430, 520), dur: 0.05, v: 0.06, type: 'triangle' });
-    noise({ t: t, dur: 0.03, a: 0.002, v: 0.09, f: rnd(700, 1000), q: 2 });
   },
   cast: function (t) {
     noise({ t: t, dur: 0.28, a: 0.1, v: 0.3, f: 500, fto: 2600, q: 1.5 });
@@ -157,9 +158,35 @@ var S = {
     for (var i = 0; i < 12; i++) {
       var tt = t + i * 0.05 * (1 - i * 0.02);
       tone({ t: tt, f: 1400 + i * 45 + rnd(-30, 30), dur: 0.024, a: 0.002, v: 0.11, type: 'triangle' });
-      noise({ t: tt, dur: 0.015, a: 0.002, v: 0.04, f: 3000, q: 3 });
     }
   },
+  // REEL: the reeling mini-game
+  nibble: function (t) { tone({ t: t, f: 520, to: 380, dur: 0.07, v: 0.09 }); },
+  // v0.1.112 (Mac): a zip while you reel in (it climbs as the bar fills), the line running out when you let go, a snap when it breaks.
+  // All tones, no bright noise bursts (decision 93).
+  reelzip: function (t, k) {
+    var u = typeof k === 'number' ? k : 0.5;
+    tone({ t: t, f: 900 + u * 900 + rnd(-25, 25), to: 1050 + u * 1000, dur: 0.05, a: 0.004, v: 0.07, type: 'triangle' });
+  },
+  unravel: function (t) {
+    tone({ t: t, f: 520 + rnd(-30, 30), to: 330, dur: 0.1, a: 0.006, v: 0.06, type: 'triangle' });
+    noise({ t: t, dur: 0.14, a: 0.03, v: 0.03, ft: 'lowpass', f: 700, fto: 400 });
+  },
+  snap: function (t) {
+    tone({ t: t, f: 1300, to: 160, dur: 0.16, a: 0.003, v: 0.22, type: 'triangle' });
+    tone({ t: t + 0.02, f: 240, to: 70, dur: 0.3, a: 0.004, v: 0.2 });
+    noise({ t: t, dur: 0.2, a: 0.004, v: 0.16, ft: 'lowpass', f: 900, fto: 250 });
+    tone({ t: t + 0.3, f: 392, to: 262, dur: 0.24, v: 0.1, type: 'triangle' });
+  },
+  reeltick: function (t) {
+    tone({ t: t, f: 1500 + rnd(-40, 40), dur: 0.022, a: 0.002, v: 0.08, type: 'triangle' });
+  },
+  thrash: function (t) {
+    noise({ t: t, dur: 0.4, a: 0.01, v: 0.2, ft: 'lowpass', f: 2600, fto: 500, send: 0.15 });
+    tone({ t: t, f: 330, to: 220, dur: 0.16, v: 0.16, type: 'triangle' });
+    tone({ t: t + 0.16, f: 330, to: 220, dur: 0.16, v: 0.13, type: 'triangle' });
+  },
+  miss: function (t) { tone({ t: t, f: 392, to: 262, dur: 0.22, v: 0.14, type: 'triangle' }); },
   catch: function (t) {
     noise({ t: t, dur: 0.25, a: 0.008, v: 0.12, ft: 'lowpass', f: 2800, fto: 600 });
     [523.25, 659.25, 783.99, 1046.5].forEach(function (f, i) { bell(f, t + 0.06 + i * 0.085, 0.13, i === 3 ? 0.7 : 0.35); });
@@ -175,7 +202,6 @@ var S = {
   },
   harvest: function (t) {
     tone({ t: t, f: 440, to: 980, dur: 0.09, v: 0.18 });
-    noise({ t: t, dur: 0.12, a: 0.01, v: 0.06, ft: 'highpass', f: 3000 });
     tone({ t: t + 0.08, f: 1319, dur: 0.16, v: 0.07, type: 'triangle' });
   },
   water: function (t) {
@@ -228,14 +254,12 @@ var S = {
   tap: function (t) { tone({ t: t, f: 660, to: 520, dur: 0.045, a: 0.003, v: 0.12 }); },
   popOpen: function (t) {
     tone({ t: t, f: 380, to: 640, dur: 0.11, v: 0.13, type: 'triangle' });
-    noise({ t: t, dur: 0.06, a: 0.02, v: 0.03, ft: 'highpass', f: 4000 });
   },
   popClose: function (t) { tone({ t: t, f: 600, to: 360, dur: 0.1, v: 0.11, type: 'triangle' }); },
   // ANIMALS (try/chickens): made in code until sound packs arrive
   cluck: function (t) {            // two soft "bok bok" notes
     [0, 0.13].forEach(function (d, i) {
       tone({ t: t + d, f: rnd(520, 580) - i * 40, to: 330, dur: 0.075, a: 0.004, v: 0.07, type: 'triangle' });
-      noise({ t: t + d, dur: 0.03, a: 0.002, v: 0.02, ft: 'bandpass', f: 1500, q: 2 });
     });
   },
   quack: function (t) { [0, 0.16].forEach(function (d) { tone({ t: t + d, f: rnd(400, 440), to: 290, dur: 0.11, a: 0.006, v: 0.05, type: 'sawtooth' }); tone({ t: t + d, f: 860, to: 600, dur: 0.09, a: 0.006, v: 0.02, type: 'square' }); }); },
@@ -249,11 +273,12 @@ function play(name, level) {                       // level (0..1) is optional: 
   var now = ctx.currentTime;
   if (now - (lastPlayed[name] || -1) < 0.07) return;   // dragging a tool across ten plots is not ten sounds at once
   lastPlayed[name] = now;
+  var k = null; if (name === 'reelzip') { k = level; level = null; }   // for the reel zip the number is how full the bar is (its pitch), not a loudness
   if (level != null && level < 1) {
     var b = { in: mkGain(level, sfx.in), wet: mkGain(level, sfx.wet) }; cur = b;
     setTimeout(function () { b.in.disconnect(); b.wet.disconnect(); }, 7000);
   }
-  S[name](now + 0.02); cur = null;
+  S[name](now + 0.02, k); cur = null;
 }
 
 // ---------- instruments (music) ----------
@@ -261,16 +286,18 @@ var sess = null;                                   // the bus the current song p
 function kal(m, t, v) {                            // music-box / kalimba: soft FM pluck
   var f = mf(m), car = ctx.createOscillator(), mod = ctx.createOscillator(), mg = ctx.createGain(), g = ctx.createGain();
   car.frequency.value = f; mod.frequency.value = f * 3;
-  mg.gain.setValueAtTime(f * 1.1, t); mg.gain.exponentialRampToValueAtTime(1, t + 0.09);
+  // Note starts are a little softer than at first (Mac, Nov 19: the halfway setting, "Good, use it"): less of the bright
+  // 'ting' here, and less of the knock on the piano, bass and marimba below.
+  mg.gain.setValueAtTime(f * 0.8, t); mg.gain.exponentialRampToValueAtTime(1, t + 0.09);
   mod.connect(mg); mg.connect(car.frequency);
-  env(g, t, 0.004, v, 1.1); car.connect(g); out(g, sess, 0.3);
+  env(g, t, 0.007, v, 1.1); car.connect(g); out(g, sess, 0.3);
   car.start(t); mod.start(t); car.stop(t + 1.2); mod.stop(t + 1.2);
 }
 function ep(m, t, v, dur) {                        // soft electric piano
   var f = mf(m); dur = dur || 1.8;
-  tone({ t: t, f: f, dur: dur, a: 0.012, v: v, bus: sess, send: 0.35 });
-  tone({ t: t, f: f * 2, dur: dur * 0.5, a: 0.012, v: v * 0.22, bus: sess });
-  tone({ t: t, f: f * 4, dur: 0.12, v: v * 0.08, bus: sess });
+  tone({ t: t, f: f, dur: dur, a: 0.017, v: v, bus: sess, send: 0.35 });
+  tone({ t: t, f: f * 2, dur: dur * 0.5, a: 0.017, v: v * 0.22, bus: sess });
+  tone({ t: t, f: f * 4, dur: 0.12, v: v * 0.04, bus: sess });
 }
 function flute(m, t, dur, v) {                     // whistle-like lead
   var f = mf(m), o = ctx.createOscillator(), o2 = ctx.createOscillator(), g = ctx.createGain(), g2 = mkGain(0.12, g);
@@ -297,13 +324,13 @@ function pad(notes, t, dur, v, cutoff) {           // warm held chord
   fl.connect(g); out(g, sess, 0.4);
 }
 function bass(m, t, dur, v) {
-  tone({ t: t, f: mf(m), dur: dur, a: 0.02, v: v, bus: sess });
-  tone({ t: t, f: mf(m), dur: dur * 0.6, a: 0.02, v: v * 0.45, type: 'triangle', bus: sess });
+  tone({ t: t, f: mf(m), dur: dur, a: 0.028, v: v, bus: sess });
+  tone({ t: t, f: mf(m), dur: dur * 0.6, a: 0.028, v: v * 0.45, type: 'triangle', bus: sess });
 }
 function mar(m, t, v) {                            // soft marimba: round, no buzz
   var f = mf(m);
-  tone({ t: t, f: f, dur: 0.38, a: 0.004, v: v, bus: sess, send: 0.25 });
-  tone({ t: t, f: f * 4, dur: 0.06, a: 0.003, v: v * 0.25, bus: sess });
+  tone({ t: t, f: f, dur: 0.38, a: 0.007, v: v, bus: sess, send: 0.25 });
+  tone({ t: t, f: f * 4, dur: 0.06, a: 0.005, v: v * 0.14, bus: sess });   // the mallet knock
 }
 // No shaker in the music (Mac, Nov 19: "It's 10000% the shaker. Take it out."). On a phone speaker its short hiss
 // came out as a dry click that sounded like clipping.
@@ -312,7 +339,9 @@ function mar(m, t, v) {                            // soft marimba: round, no bu
 var PC = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
 function N(s) { var a = s.length === 3 ? (s[1] === '#' ? 1 : -1) : 0; return 12 * (+s[s.length - 1] + 1) + PC[s[0]] + a; }
 var CH = { C: [0, [0, 4, 7]], D: [2, [0, 4, 7]], Em: [4, [0, 3, 7]], F: [5, [0, 4, 7]], G: [7, [0, 4, 7]], Am: [9, [0, 3, 7]],
-  Fmaj7: [5, [0, 4, 7, 11]], Dm7: [2, [0, 3, 7, 10]], Bbmaj7: [10, [0, 4, 7, 11]], Am7: [9, [0, 3, 7, 10]] };
+  Fmaj7: [5, [0, 4, 7, 11]], Dm7: [2, [0, 3, 7, 10]], Bbmaj7: [10, [0, 4, 7, 11]], Am7: [9, [0, 3, 7, 10]],
+  A: [9, [0, 4, 7]], Bm: [11, [0, 3, 7]], Dm: [2, [0, 3, 7]], Bb: [10, [0, 4, 7]], E: [4, [0, 4, 7]], Gm: [7, [0, 3, 7]],
+  Cmaj7: [0, [0, 4, 7, 11]], Em7: [4, [0, 3, 7, 10]] };
 function chord(name) { var c = CH[name], r = 48 + c[0]; if (r > 55) r -= 12; return c[1].map(function (i) { return r + i; }); }
 
 var MOODS = {
@@ -324,12 +353,39 @@ var MOODS = {
     ['G', 'B4 D5 G5 - B5 - G5 -'], ['Em', 'G5 - E5 - G5 - B4 -'], ['C', 'C5 - E5 - D5 - F#5 -'], ['G', 'G5 - - - - - - -']] },
   drift: { name: 'Drifting Tide', bpm: 63, nightBpm: 52, sparse: false, bars: [
     ['Fmaj7', 'A4 - - C5 - - F5 -'], ['Dm7', 'F5 - - D5 - - A4 -'], ['Bbmaj7', 'D5 - - F5 - - A5 -'], ['C', 'G5 - - E5 - - C5 -'],
-    ['Fmaj7', 'A4 - C5 - F5 - - -'], ['Am7', 'E5 - - C5 - - A4 -'], ['Bbmaj7', 'D5 - F5 - Bb5 - A5 -'], ['C', 'G5 - - - C5 - - -']] }
+    ['Fmaj7', 'A4 - C5 - F5 - - -'], ['Am7', 'E5 - - C5 - - A4 -'], ['Bbmaj7', 'D5 - F5 - Bb5 - A5 -'], ['C', 'G5 - - - C5 - - -']] },
+  // ---- Added Nov 19. Mac: "The day time music could use another track." All original, written for Tidewell.
+  //      Each is two 8-bar parts played main, main, middle, main (32 bars), so it runs about a minute before repeating.
+  //      Mac's rules for these: the game's own soft instruments (no square waves), no shaker, no swelling pad,
+  //      nothing jumping up an octave, and each part ends on a held note.
+  home: { name: 'Home Harbor', feel: 'home', aaba: true, bpm: 104, bars: [          // the smooth version: "better for night time" -> evening
+    ['D', 'F#5 - A5 - D6 - - A5'], ['A', 'C#6 - - B5 A5 - E5 -'], ['Bm', 'D5 - F#5 - B5 - - A5'], ['G', 'G5 - - F#5 D5 - - -'],
+    ['D', 'F#5 - A5 - D6 - B5 -'], ['G', 'D6 - B5 - G5 - B5 -'], ['Em', 'E5 - G5 - B5 - A5 G5'], ['A', 'A5 - - - - - - -'],
+    ['G', 'B5 - - D6 B5 - G5 -'], ['D', 'A5 - - F#5 D5 - - -'], ['Em', 'G5 - - B5 G5 - E5 -'], ['A', 'E5 - A5 - C#6 - - -'],
+    ['G', 'B5 - D6 - B5 - - G5'], ['D', 'A5 - - F#5 A5 - - -'], ['E', 'B5 - G#5 - E5 - G#5 B5'], ['A', 'C#6 - - - A5 - - -']] },
+  homeday: { name: 'Home Harbor, busy', feel: 'homebusy', aaba: true, bpm: 104, bars: null },   // same tune, lively, for the day
+  bustle: { name: 'Dockside Bustle', feel: 'bustle', aaba: true, bpm: 132, bars: [
+    ['C', 'E5 G5 C6 G5 E5 G5 C6 -'], ['C', 'D6 - C6 - G5 - - -'], ['F', 'F5 A5 C6 A5 F5 A5 C6 -'], ['G', 'D6 - B5 - G5 - - -'],
+    ['C', 'E6 - D6 C6 - G5 E5 -'], ['Am', 'C6 - B5 A5 - E5 C5 -'], ['Dm', 'D5 F5 A5 - D6 - C6 -'], ['G', 'B5 - G5 - D5 - G5 -'],
+    ['Am', 'A5 - C6 - E6 - - C6'], ['Em', 'B5 - - G5 E5 - - -'], ['F', 'A5 - C6 - F6 - - C6'], ['C', 'E6 - - C6 G5 - - -'],
+    ['Am', 'A5 C6 E6 - C6 - A5 -'], ['Em', 'G5 B5 E6 - B5 - G5 -'], ['F', 'F5 A5 C6 - A5 - F5 -'], ['G', 'G5 - B5 - D6 - - -']] },
+  hop: { name: 'Tide Pool Hop', feel: 'hop', aaba: true, bpm: 112, swing: 0.12, bars: [
+    ['F', 'C5 - F5 A5 - C6 - A5'], ['Dm', 'F5 - - D5 F5 - A5 -'], ['Bb', 'D5 - F5 Bb5 - D6 - Bb5'], ['C', 'G5 - - E5 G5 - - -'],
+    ['F', 'C5 - F5 A5 - C6 - A5'], ['Am', 'C6 - A5 - E5 - A5 -'], ['Gm', 'Bb5 - G5 - D5 - G5 Bb5'], ['C', 'C6 - - - - - - -'],
+    ['Bb', 'D6 - Bb5 - F5 - Bb5 -'], ['F', 'C6 - A5 - F5 - - -'], ['Gm', 'Bb5 - G5 - D5 - G5 -'], ['C', 'E5 - G5 - C6 - - -'],
+    ['Bb', 'D6 - - Bb5 D6 - F5 -'], ['F', 'C6 - - A5 C6 - F5 -'], ['Dm', 'A5 - F5 - D5 - F5 A5'], ['C', 'G5 - - - - - - -']] },
+  lazy: { name: 'Lazy Morning', feel: 'lazy', aaba: true, bpm: 84, swing: 0.16, bars: [   // first called Lazy Afternoon; Mac: "sounds like a good song for the morning actually", then "rename song to lazy morning"
+    ['Cmaj7', 'E5 - G5 - - B5 - G5'], ['Am7', 'A5 - - G5 E5 - - -'], ['Dm7', 'F5 - A5 - - C6 - A5'], ['G', 'B5 - - G5 D5 - - -'],
+    ['Cmaj7', 'E5 - G5 - - B5 - D6'], ['Em7', 'B5 - - G5 E5 - G5 -'], ['Fmaj7', 'A5 - C6 - - A5 - F5'], ['G', 'G5 - - - - - - -'],
+    ['Fmaj7', 'A5 - - C6 A5 - F5 -'], ['Em7', 'G5 - - B5 G5 - E5 -'], ['Dm7', 'F5 - - A5 F5 - D5 -'], ['Cmaj7', 'E5 - - G5 - - - -'],
+    ['Fmaj7', 'A5 - C6 - - A5 - F5'], ['Em7', 'G5 - B5 - - G5 - E5'], ['Dm7', 'F5 - A5 - D6 - - A5'], ['G', 'B5 - - - - - - -']] }
 };
+MOODS.homeday.bars = MOODS.home.bars;
 
 var song = null;
 function scheduleBar() {
-  var M = MOODS[song.id], night = song.night, bar = M.bars[song.bar % M.bars.length], bi = song.bar % M.bars.length;
+  var M = MOODS[song.id], night = song.night, k32 = song.bar % 32;
+  var bi = M.aaba ? (k32 < 16 ? k32 % 8 : k32 < 24 ? k32 - 8 : k32 - 24) : song.bar % M.bars.length, bar = M.bars[bi];   // main, main, middle, main
   var sd = 60 / (night ? M.nightBpm : M.bpm) / 2, t0 = song.next, barDur = sd * 8;
   var ch = chord(bar[0]), toks = bar[1].split(' ');
   function at(i) { return t0 + i * sd + (M.swing && !night && i % 2 ? M.swing * sd : 0); }
@@ -338,12 +394,37 @@ function scheduleBar() {
     if (tok === '-') return;
     if (night && M.sparse && !(i === 0 || i === 4 || (i === 6 && bi % 2))) return;
     var m = N(tok) - (night ? 12 : 0), acc = i === 0 ? 1.15 : 1;
-    if (song.id === 'box') { if (night) ep(m, at(i), 0.11 * acc, 2.2); else kal(m, at(i), 0.2 * acc); }
+    if (M.feel === 'home') ep(m, at(i), 0.14 * acc, 2.4);                                               // soft piano
+    else if (M.feel === 'homebusy') { kal(m, at(i), 0.15 * acc); ep(m, at(i), 0.06 * acc, 1.2); }       // music box with a little piano under it
+    else if (M.feel === 'bustle') kal(m, at(i), 0.19 * acc);                                            // music box
+    else if (M.feel === 'hop') { mar(m, at(i), 0.3 * acc); kal(m + 12, at(i), 0.07 * acc); }            // marimba with a bell on top
+    else if (M.feel === 'lazy') ep(m, at(i), 0.17 * acc, 1.8);                                          // soft piano
+    else if (song.id === 'box') { if (night) ep(m, at(i), 0.11 * acc, 2.2); else kal(m, at(i), 0.2 * acc); }
     else if (song.id === 'uke') { if (night) ep(m, at(i), 0.11 * acc, 2.2); else flute(m, at(i), sd * 1.6, 0.1 * acc); }
     else ep(m, at(i), (night ? 0.1 : 0.13) * acc, night ? 2.6 : 2);
   });
   // backing
-  if (song.id === 'box') {
+  var r = ch[0], fifth = r + 7 > 57 ? r - 5 : r + 7, q;
+  if (M.feel === 'home') {                           // calm: a low piano chord, two bass notes, three soft marimba notes
+    ch.forEach(function (m) { ep(m, at(0), 0.026, 2.8); });
+    bass(r, at(0), sd * 4, 0.12); bass(fifth, at(4), sd * 3.5, 0.08);
+    [2, 4, 6].forEach(function (i, k) { mar(ch[[1, 2, 1][k]] + 12, at(i), 0.045); });
+  } else if (M.feel === 'homebusy') {                // lively: rolling marimba and a moving bass
+    bass(r, at(0), sd * 3.5, 0.12); bass(fifth, at(4), sd * 1.8, 0.09); bass(r, at(6), sd * 1.6, 0.07);
+    for (q = 0; q < 8; q++) mar(ch[[0, 1, 2, 1][q % 4]] + 12, at(q), q % 2 ? 0.035 : 0.045);
+  } else if (M.feel === 'bustle') {                  // walking bass and marimba broken chords
+    [r, r + 7, r + 12, r + 7].forEach(function (m, k) { bass(m, at(k * 2), sd * 1.6, k ? 0.085 : 0.11); });
+    for (q = 0; q < 8; q++) mar(ch[[0, 1, 2, 1][q % 4]] + 12, at(q), 0.04);
+  } else if (M.feel === 'hop') {                     // skipping bass, marimba chords off the beat
+    bass(r, at(0), sd * 2.6, 0.15); bass(fifth, at(3), sd * 1.5, 0.12); bass(r, at(6), sd * 1.6, 0.1);
+    [2, 5, 7].forEach(function (i) { [ch[1] + 12, ch[2] + 12].forEach(function (m) { mar(m, at(i), 0.06); }); });
+  } else if (M.feel === 'lazy') {                    // laid-back: soft key chords, a mellow bass, and the game's only drum beat (a quiet kick and rim)
+    [0, 3].forEach(function (i) { ch.forEach(function (m) { ep(m + 12, at(i), 0.042, 0.9); }); });
+    bass(r, at(0), sd * 2.6, 0.12); bass(r, at(3), sd * 2.4, 0.08); bass(fifth, at(6), sd * 1.6, 0.08);
+    tone({ t: at(0), f: 210, to: 95, dur: 0.09, a: 0.004, v: 0.09, type: 'triangle', bus: sess });
+    tone({ t: at(5), f: 210, to: 95, dur: 0.09, a: 0.004, v: 0.07, type: 'triangle', bus: sess });
+    // (the rim on beats 2 and 6 was a 45 ms noise burst, the same thing as the shaker: out, decision 93)
+  } else if (song.id === 'box') {
     bass(ch[0], at(0), sd * 4, 0.13); if (!night) bass(ch[0], at(4), sd * 3, 0.08);
     pad(ch, t0, barDur, night ? 0.05 : 0.03, night ? 900 : 1400);
     if (!night) { kal(ch[1] + 12, at(2), 0.06); kal(ch[2] + 12, at(6), 0.06); }
@@ -361,18 +442,21 @@ function scheduleBar() {
   song.bar++; song.next = t0 + barDur;
 }
 // The music takes turns (Mac: "so players don't get bored, like Animal Crossing").
-//   morning: Music Box Harbor      day: Sunny Dock
-//   evening: Sunny Dock, slow      night: Music Box Harbor, slow
+//   morning: Music Box Harbor and Lazy Morning take turns   (Mac, Nov 19: it "sounds like a good song for the morning")
+//   day:     four tunes take turns: Sunny Dock, Home Harbor (busy), Dockside Bustle, Tide Pool Hop   (Mac's picks, Nov 19)
+//   evening: Home Harbor (smooth)   (Mac: "better for night time"; it replaces the slow Sunny Dock)
+//   night:   Music Box Harbor, slow
 //   rain:    Drifting Tide (only while it rains; weather.js calls setWeather)
 // A turn lasts about 100 seconds, then the music rests and only the shore sounds play.
 var SET_SECONDS = 100, REST_SECONDS = 30;
-var G = { tod: 'day', weather: null, sets: 0, restUntil: 0, started: false, px: 0, pz: 0, walked: 0.6, lastStep: 0, zoneAt: 0, dockD: 0 };
+var DAY_TUNES = ['uke', 'homeday', 'bustle', 'hop'], MORNING_TUNES = ['box', 'lazy'];
+var G = { dayTurn: Math.floor(Math.random() * DAY_TUNES.length), mornTurn: Math.floor(Math.random() * MORNING_TUNES.length), tod: 'day', weather: null, sets: 0, restUntil: 0, started: false, px: 0, pz: 0, walked: 0.6, lastStep: 0, zoneAt: 0, dockD: 0 };
 function pickTune() {
   var slow = G.tod === 'night' || G.tod === 'evening';
   if (G.weather === 'rain') return ['drift', slow];
-  if (G.tod === 'morning') return ['box', false];
-  if (G.tod === 'day') return ['uke', false];
-  return G.tod === 'evening' ? ['uke', true] : ['box', true];
+  if (G.tod === 'morning') return [MORNING_TUNES[G.mornTurn++ % MORNING_TUNES.length], false];
+  if (G.tod === 'day') return [DAY_TUNES[G.dayTurn++ % DAY_TUNES.length], false];   // a different day tune each turn
+  return G.tod === 'evening' ? ['home', false] : ['box', true];
 }
 function retire(old, fade) {
   if (!old) return;
@@ -384,7 +468,7 @@ function beginSet() {
   var fl = ctx.createBiquadFilter(); fl.type = 'lowpass'; fl.frequency.value = p[1] ? 2600 : 9000; fl.connect(mus.in);
   retire(sess, false);
   sess = { in: mkGain(1, fl), wet: mkGain(p[1] ? 1.3 : 1, mus.wet) };
-  song = { id: p[0], night: p[1], bar: 0, next: ctx.currentTime + 0.15, left: 8 * Math.max(2, Math.round(SET_SECONDS / (32 * 60 / bpm))) };
+  song = { id: p[0], night: p[1], bar: 0, next: ctx.currentTime + 0.15, left: M.aaba ? 32 * Math.max(1, Math.round(SET_SECONDS / (128 * 60 / bpm))) : 8 * Math.max(2, Math.round(SET_SECONDS / (32 * 60 / bpm))) };   // whole passes of the tune
   G.sets++;
 }
 function tick() {

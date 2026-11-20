@@ -20,6 +20,8 @@ import * as spots from './fishing-spots.js';   // FISHING (try/fishing): the riv
 import * as goals from './goals.js';         // GOALS: the first ten goals (card, path, glow, hand); hooks marked GOALS
 import * as dex from './fishdex.js';            // FISHING: the fish book, hints and sightings
 import * as tackle from './tackle.js';          // TACKLE (try/fishing): rods, cast feels, jetty, dock steps; hooks marked TACKLE below
+import * as reel from './reel.js';              // REEL (try/reel): fake nibbles and the reeling mini-game; hooks marked REEL
+import { scenery } from './scenery.js';        // SCENERY (try/scenery): sea rocks, the lighthouse and other things to look at; hooks marked SCENERY
 
 // Features switched on in this build. Combat (monsters, the Warrior) arrives in v0.2.0.
 const FEATURES = { combat: false };
@@ -121,12 +123,15 @@ const manager = new THREE.LoadingManager();
 const loader = new GLTFLoader(manager);
 const MODELS = {
   town: ['stall-red', 'stall-green', 'stall-bench', 'fountain-round', 'lantern', 'fence', 'fence-gate', 'tree', 'tree-high-round',
-    'wall-wood-door', 'wall-wood-window-shutters', 'wall-wood', 'wall-wood-corner', 'roof-gable', 'roof-gable-end', 'cart', 'banner-red', 'chimney'],
+    'wall-wood-door', 'wall-wood-window-shutters', 'wall-wood', 'wall-wood-corner', 'roof-gable', 'roof-gable-end', 'cart', 'banner-red', 'chimney',
+    'watermill'],   // SCENERY (mockups)
   pirate: ['structure-platform-dock', 'structure-platform-dock-small', 'boat-row-small', 'boat-row-large', 'ship-small', 'ship-medium', 'palm-detailed-bend',
-    'palm-detailed-straight', 'barrel', 'crate', 'crate-bottles', 'structure', 'structure-roof', 'rocks-sand-a', 'flag-high-pennant', 'chest'],
+    'palm-detailed-straight', 'barrel', 'crate', 'crate-bottles', 'structure', 'structure-roof', 'rocks-sand-a', 'flag-high-pennant', 'chest',
+    'rocks-a', 'rocks-b', 'rocks-c', 'ship-wreck', 'tower-base-door', 'tower-middle', 'tower-middle-windows', 'tower-watch', 'tower-roof', 'tower-top'],   // SCENERY (mockups)
   nature: ['tree_default', 'tree_oak', 'tree_detailed', 'tree_default_dark', 'tree_oak_dark', 'tree_pineRoundA', 'plant_bush', 'plant_bushLarge',
     'flower_redA', 'flower_yellowA', 'flower_purpleA', 'grass_large', 'rock_largeA', 'rock_smallA', 'mushroom_redGroup', 'crops_cornStageD',
-    'crops_dirtRow', 'stump_round', 'log', 'crops_leafsStageA', 'crops_leafsStageB', 'crop_turnip'],
+    'crops_dirtRow', 'stump_round', 'log', 'crops_leafsStageA', 'crops_leafsStageB', 'crop_turnip',
+    'rock_tallA', 'rock_tallD'],   // SCENERY (mockups)
 };
 // loaded later, when first needed (see "lazy loading" below)
 const LATER = { fish: ['Fish1', 'Fish2', 'Fish3', 'Shark', 'Manta_ray', 'Dolphin', 'Whale'] };   // FISHING: + the two sightings
@@ -344,6 +349,8 @@ function place(kit, name, x, z, opt = {}) {
 function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
 const rnd = mulberry32(20261105);
 const lanternLights = [];
+const lampProbe = { intensity: 0 }; lanternLights.push(lampProbe);   // SCENERY: gets the same brightness as every lantern (time of day and rain), read by the lighthouse lamp
+const lanternLamps = () => lampProbe.intensity;
 const FISHEL_STALL = { x: 6.6, z: -1.8 };   // 2 m further right than before v0.1.63, away from the dock (Mac)
 const BOARD = { x: -3.6, z: -1.7 };   // moved away from Higgins in v0.1.43 (Mac: too close)
 const ROSA_CART = { x: -11.4, z: -0.9, r: -0.35 };   // Rosa's Flowers, on the beach row left of the board (decision 61)   // the order board, left of Higgins (decision 50)
@@ -510,6 +517,7 @@ function buildWorld() {
   for (const [bx, bz] of [[-3.2, 6.8], [3.4, 6.9], [-6, 6.9], [6.5, 6.9], [-10, 6.8], [10, 6.8], [8.4, 2.4], [-11, 3]])
     wildPlant(T(rnd() > 0.5 ? 'plant_bushLarge' : 'plant_bush', bx, bz, 1.2));
 
+  scenery.init({ THREE, scene, M, SCALE, WATER_Y, groundY, bankX: spots.innerBank });   // SCENERY
   buildLots(T);
   cargo.build();
   refreshDig();
@@ -1144,7 +1152,7 @@ function solveArm(b, side, target, poleDir, w) {
   aimBone(lo, fist.position, T, w);
 }
 // fishing: idle -> flick (tap Cast) -> flight -> wait -> bite -> catch -> reel -> idle
-const CAST_DIST = 7.5;   // how far a tap-cast lands, in metres
+const CAST_DIST = 3.4;   // how far a tap-cast lands, in metres. Short on purpose (Mac, v0.1.110): the bobber and the fish stay close enough to see. Was 7.5 plus the sea rod's extra reach.
 const fishing = { state: 'idle', t: 0, land: new THREE.Vector3(), from: new THREE.Vector3(), wait: 3, dist: 0, a: 0.75 };
 function bestBait() { return BAIT_ORDER.find(b => invCount(b) > 0) || null; }   // FISHING: no bare hook any more
 function setFish(st) { fishing.state = st; fishing.t = 0; }
@@ -1155,7 +1163,7 @@ function castTarget() {
   if (onDock(player.pos.x, player.pos.z)) { if (Math.abs(f.x) < 0.35 && f.z > -0.5) f.set(Math.sign(f.x || 1), 0, -0.4); }
   else if (f.z > -0.3) f.set(f.x * 0.5, 0, -1);
   f.normalize();
-  const p = player.pos.clone().addScaledVector(f, CAST_DIST + tackle.seaReach());   // TACKLE: the sea cast zips further out
+  const p = player.pos.clone().addScaledVector(f, CAST_DIST);   // (the sea cast still zips flat and fast; it just no longer lands further out)
   p.z = Math.min(p.z, -5.4);
   if (Math.abs(p.x - DOCK.x) < DOCK.half + 0.7 && p.z > DOCK.zFar - 1) p.x = DOCK.x + Math.sign(p.x - DOCK.x || 1) * (DOCK.half + 1.0);
   if (shipBlocks(player.pos.x, player.pos.z, p.x, p.z)) { p.x = DOCK.x + Math.sign(f.x || 1) * (DOCK.half + 2.6); p.z = Math.min(-5.4, Math.max(player.pos.z - 1.2, -10.6 - DOCK_ADD)); }   // the ship's at the end of the dock: cast off the side
@@ -1174,9 +1182,10 @@ function beginCast(target) {
   player.faceYaw = Math.atan2(target.x - player.pos.x, target.z - player.pos.z);
   setFish('flick'); audio.play(tackle.castSound(fishing.place));   // TACKLE: Zip at sea, Plop on the river and lake
 }
+function rollCast() { return rollFish(fishing.bait || 'worm', todKey, Math.random, { place: fishing.place, rain: weather.level > 0, rocks: fishing.place === 'river' && spots.nearRocks(fishing.land.x, fishing.land.z) }); }   // river rocks are hot spots (v0.1.61)   // FISHING: by place, season and rain
 function landFish() {
-  if (fishing.state !== 'bite') return;
-  const fish = rollFish(fishing.bait || 'worm', todKey, Math.random, { place: fishing.place, rain: weather.level > 0, rocks: fishing.place === 'river' && spots.nearRocks(fishing.land.x, fishing.land.z) });   // river rocks are hot spots (v0.1.61)   // FISHING: by place, season and rain
+  if (fishing.state !== 'bite' && fishing.state !== 'fight') return;
+  const fish = fishing.fish || rollCast();   // REEL: the fish was picked when the bobber landed
   fishing.rec = dex.record(fish, rollSize(fish));   // FISHING: its size, and your biggest
   setFish('catch'); audio.play('catch');
   if (!fishIcon[fish.id]) startFishJump(fishing.land.x, fishing.land.z, fish);   // picture not ready (very slow connection): the old 3D jump
@@ -1188,15 +1197,17 @@ function reelIn() { if (fishing.state !== 'idle' && fishing.state !== 'reel') { 
 function updateFishing(dt) {
   const F = fishing; F.t += dt;
   if (tool !== 'rod' && F.state !== 'idle') setFish('idle');
+  reel.update(dt);   // REEL: nibbles and the fight
   if (player.moving && ['flick', 'flight', 'wait', 'bite'].includes(F.state)) reelIn();
   const e = (x) => { x = Math.min(1, Math.max(0, x)); return x * x * (3 - 2 * x); };
   switch (F.state) {
     case 'idle': F.a = 0.75 + Math.sin(elapsed * 1.6) * 0.03; break;
     case 'flick': F.a = 1.9 + (0.15 - 1.9) * e(F.t / 0.13); if (F.t > 0.13) { worldRodTip.getWorldPosition(F.from); setFish('flight'); } break;
-    case 'flight': F.a = 0.15; if (F.t > tackle.castShape(F.place, F.dist).dur) { addSplash(F.land.x, F.land.z); if (tackle.castKind(F.place) === 'zip') setTimeout(() => addSplash(F.land.x, F.land.z), 110); audio.play(tackle.landSound(F.place));   /* TACKLE: flight time, splash and sound by cast feel */ const bw = BAIT[F.bait || 'worm'].bite; F.wait = settings.debug && settings.instantBite ? DEBUG.biteSeconds : (bw[0] + Math.random() * (bw[1] - bw[0])) * tackle.perks(F.place).bite /* TACKLE: faster rods */ * pets.biteMul() /* PETS: the fish's hearts */; setFish('wait'); } break;
+    case 'flight': F.a = 0.15; if (F.t > tackle.castShape(F.place, F.dist).dur) { addSplash(F.land.x, F.land.z); if (tackle.castKind(F.place) === 'zip') setTimeout(() => addSplash(F.land.x, F.land.z), 110); audio.play(tackle.landSound(F.place));   /* TACKLE: flight time, splash and sound by cast feel */ const bw = BAIT[F.bait || 'worm'].bite; F.wait = settings.debug && settings.instantBite ? DEBUG.biteSeconds : (bw[0] + Math.random() * (bw[1] - bw[0])) * tackle.perks(F.place).bite /* TACKLE: faster rods */ * pets.biteMul() /* PETS: the fish's hearts */; F.fish = rollCast(); reel.onLand(F, settings.debug && settings.instantBite);   /* REEL: which fish is coming, and its fake nibbles */ setFish('wait'); } break;
     case 'wait': F.a = 0.2 + Math.sin(elapsed * 2) * 0.02; if (F.t > F.wait) { setFish('bite'); addSplash(F.land.x, F.land.z); audio.play('bite'); } break;
     case 'bite': F.a = 0.2 - Math.abs(Math.sin(F.t * 18)) * 0.08;
       if (F.t > 2.5 + tackle.perks(F.place).reel) { toast('It got away!'); setFish('reel'); } break;   // TACKLE: better rods give a longer Reel! window
+    case 'fight': F.a = reel.rodAngle(); break;   // REEL
     case 'catch': F.a = 0.2 + (1.25 - 0.2) * e(F.t / 0.3); if (F.t > 0.9) setFish('reel'); break;
     case 'reel': F.a = F.a + (0.75 - F.a) * Math.min(1, dt * 6); if (F.t > 0.45) setFish('idle'); break;
   }
@@ -1209,9 +1220,10 @@ function bobberTarget(tip, out) {
     return true;
   }
   if (F.state === 'wait' || F.state === 'bite') {
-    out.copy(F.land); out.y = WATER_Y + 0.03 + Math.sin(elapsed * 4) * 0.02 - (F.state === 'bite' ? 0.07 : 0);
+    out.copy(F.land); out.y = WATER_Y + 0.03 + Math.sin(elapsed * 4) * 0.02 - (F.state === 'bite' ? 0.07 : 0) - reel.nibbleDip(F);   // REEL: a nibble is a small dip
     return true;
   }
+  if (F.state === 'fight') return reel.bobber(out);   // REEL
   if (F.state === 'catch' || F.state === 'reel') {
     const u = F.state === 'catch' ? Math.min(1, F.t / 0.9) * 0.5 : 0.5 + Math.min(1, F.t / 0.45) * 0.5;
     const hang = tip.clone(); hang.y -= 0.42;
@@ -1227,20 +1239,31 @@ function applyRodPose(dt) {
   r.w += (want - r.w) * Math.min(1, dt * (want ? 12 : 5));
   worldRod.visible = tool === 'rod' && r.w > 0.5 && body.root.visible;
   for (const bb of Object.values(bodies)) if (bb.tools.rod) bb.tools.rod.visible = tool === 'rod' && !worldRod.visible && !ward.on;   // empty hands in the wardrobe
-  if (r.w < 0.01) { r.lw = 0; return; }
+  if (r.w < 0.01) { r.lw = 0; if (r.lean || r.roll) { r.lean = r.roll = 0; body.root.rotation.x = body.root.rotation.z = 0; } return; }
   const b = body, S = b.H / 1.7;
+  // REEL, v0.1.109 (Mac: "the character doesn't animate a struggle while fighting the fish"): in the fight you lean back
+  // against the line and pump the rod as you wind, get dragged sideways when the fish darts, and are yanked forward and
+  // shaken when it thrashes. window.__fightLab = { pose: 1 | 2 } picks how strong (mockups); 2 is the default.
+  const sg = fishing.state === 'fight' ? reel.struggle() : null, amt = sg ? ((window.__fightLab || {}).pose === 1 ? 0.55 : 1) : 0;
+  const tE = performance.now() / 1000;
+  const wantLean = sg ? amt * (-(0.2 + 0.1 * sg.prog) - (sg.wind ? 0.05 + Math.sin(tE * 7) * 0.05 : 0) + sg.thrash * 0.42) : 0;
+  const wantRoll = sg ? amt * (-sg.drag * 0.26 + sg.thrash * Math.sin(tE * 34) * 0.07) : 0;
+  r.lean = (r.lean || 0) + (wantLean - (r.lean || 0)) * Math.min(1, dt * 9);
+  r.roll = (r.roll || 0) + (wantRoll - (r.roll || 0)) * Math.min(1, dt * 11);
+  b.root.rotation.order = 'YXZ'; b.root.rotation.x = r.lean; b.root.rotation.z = r.roll;
+  if (sg) b.root.updateMatrixWorld(true);
   const f = new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw));
   const right = new THREE.Vector3(-Math.cos(player.yaw), 0, Math.sin(player.yaw));
   const torso = b.bones.Torso.getWorldPosition(new THREE.Vector3());
-  r.a = fishing.a;
+  r.a = fishing.a + (sg ? amt * (0.28 + (sg.wind ? Math.sin(tE * 7) * 0.12 : 0) - sg.thrash * 0.5) : 0);   // rod held high against the pull, pumped as you wind, dragged down on a thrash
   const lift = fishing.state === 'flick' ? 0.05 * S : 0;
   const grip = torso.clone().addScaledVector(f, 0.3 * S).addScaledVector(right, 0.04 * S).add(new THREE.Vector3(0, -0.1 * S + lift, 0));
-  const dir = f.clone().multiplyScalar(Math.cos(r.a)).add(new THREE.Vector3(0, Math.sin(r.a), 0)).normalize();
+  const dir = f.clone().multiplyScalar(Math.cos(r.a)).add(new THREE.Vector3(0, Math.sin(r.a), 0)).addScaledVector(right, sg ? amt * sg.drag * 0.45 : 0).normalize();   // the rod tip follows a darting fish
   // right hand on the grip, left hand a little further up the rod
   const down = new THREE.Vector3(0, -1, 0);
   solveArm(b, 'R', grip, down.clone().addScaledVector(right, 0.6), r.w);
   // one hand while idle or walking and for the flick; the left hand joins just above the right once the line is out
-  const both = ['wait', 'bite', 'catch'].includes(fishing.state);
+  const both = ['wait', 'bite', 'catch', 'fight'].includes(fishing.state);
   r.lw += ((both ? 1 : 0) - r.lw) * Math.min(1, dt * (both ? 6 : 12));
   if (r.lw > 0.02) solveArm(b, 'L', grip.clone().addScaledVector(dir, 0.085 * S), down.clone().addScaledVector(right, -0.6), r.w * r.lw);
   worldRod.position.copy(grip).addScaledVector(dir, -0.08 * S);
@@ -1275,7 +1298,10 @@ function showHeldTool() { for (const b of Object.values(bodies)) for (const [id,
 
 // ---------- UI ----------
 const toastEl = document.getElementById('toast'); let toastT = 0;
-function toast(msg) { toastEl.querySelector('span').textContent = msg; toastEl.hidden = false; toastT = 2.2; }
+// The message hides on its own clock, not the game loop's: inside Nell's store the outdoor loop is paused, so a message
+// shown there ("Fountain: town level 5") never went away (Mac, v0.1.115).
+let toastTimer = 0;
+function toast(msg) { toastEl.querySelector('span').textContent = msg; toastEl.hidden = false; toastT = 0; clearTimeout(toastTimer); toastTimer = setTimeout(() => { toastEl.hidden = true; }, 2200); }
 const openSheet = (id) => { document.querySelectorAll('.sheet').forEach(x => x.hidden = x.id !== id); if (id === 'bag') renderBag(); if (id === 'settings') renderSettings(); };
 document.getElementById('menuBtn').addEventListener('click', () => openSheet('menu'));
 document.getElementById('menuFish').addEventListener('click', () => dex.open());   // FISHING: the fish book
@@ -1301,6 +1327,7 @@ const ACTIONS = {
   dig: { label: 'Dig', icon: 'shovel', color: '#a8743f' },
   needtool: { label: 'Need', icon: 'lock', color: '#9a8fae' },
   collect: { label: 'Collect', icon: 'coin', color: '#e0a020' },
+  fight: { label: 'Reel', icon: 'reel', color: '#9fdc95', soft: true }, fightstop: { label: 'Let go!', icon: 'hand', color: '#e5484d' },   // REEL
   take: { label: 'Take', icon: 'worm', color: '#3ea6e8' }, nobait: { label: 'No bait', icon: 'worm', color: '#b9b4c4', soft: true },   // FISHING
 };
 function setUse(a) {
@@ -1482,9 +1509,11 @@ function doAction(a) {
     if (fishing.state !== 'idle') return;
     beginCast(a.at ? a.at.clone().setY(0) : castTarget());
   } else if (a.kind === 'reel' || a.kind === 'wait') {
-    reelIn();
+    if (!reel.early()) reelIn();   // REEL: a tap on a nibble is too early
   } else if (a.kind === 'bite') {
-    landFish();
+    reel.strike();   // REEL: the fight starts (the button's own press starts it sooner)
+  } else if (a.kind === 'fight' || a.kind === 'fightstop') {
+    /* REEL: held, not tapped */
   } else if (a.kind === 'till') {
     upperOneShot('Attack', 0.45); setTimeout(() => { if (!plots.has(cellKey(a.cell))) { addPlot(a.cell); history.push({ kind: 'till', key: cellKey(a.cell) }); commit(); } }, 220);
   } else if (a.kind === 'plant') {
@@ -1499,7 +1528,7 @@ function doAction(a) {
 // tap the ground: act on that square, walking over first if it's out of reach
 const tapRay = new THREE.Raycaster(), tapNdc = new THREE.Vector2();
 function handleTap(x, y) {
-  if (!groundMesh) return;
+  if (!groundMesh || fishing.state === 'fight') return;   // REEL
   tapNdc.set(x / innerWidth * 2 - 1, -(y / innerHeight) * 2 + 1);
   tapRay.setFromCamera(tapNdc, camera);
   const hit = tapRay.intersectObject(groundMesh, false)[0];
@@ -1929,6 +1958,7 @@ function pickUse() {
   const onWater = nearWater();
   if (tool === 'rod' && ['flick', 'flight', 'wait'].includes(fishing.state)) return { kind: 'wait', key: 'wait' };
   if (tool === 'rod' && fishing.state === 'bite') return { kind: 'bite', key: 'bite' };
+  if (tool === 'rod' && fishing.state === 'fight') return reel.use();   // REEL
   if (tool === 'rod' && (fishing.state === 'catch' || fishing.state === 'reel')) return null;
   if (tool === 'rod' && onWater) return bestBait() ? { kind: 'cast', key: 'dock' } : { kind: 'nobait', key: 'nobait' };   // FISHING: no bait, no cast
   // nearest ripe crop always wins
@@ -3529,7 +3559,7 @@ function update(dt) {
   elapsed += dt;
   waterUniforms.uTime.value = elapsed;
   // movement
-  let mv = dlg.open || farm.mode !== 'off' || ward.on ? new THREE.Vector3() : new THREE.Vector3(joy.dx, 0, joy.dy);
+  let mv = dlg.open || farm.mode !== 'off' || ward.on || fishing.state === 'fight' /* REEL: the thumb steers the fish */ ? new THREE.Vector3() : new THREE.Vector3(joy.dx, 0, joy.dy);
   tickWardrobe(dt);
   placeUndo(); tickClear(dt); tickPoofs(dt); tickChips(dt); tickDig(dt); tickSaleBubble(); cargo.tick(dt); spots.frame(); dex.frame(dt); tackle.frame();   // FISHING, TACKLE
   let mag = Math.min(1, mv.length());
@@ -3616,6 +3646,7 @@ function update(dt) {
   updateUndo();
   updatePlots(dt);
   if (toolNameT > 0) { toolNameT -= dt; if (toolNameT <= 0) document.getElementById('toolName').hidden = true; }
+  scenery.frame(dt, elapsed, lanternLamps());   // SCENERY: wheels turn, the lighthouse lamp comes on with the lanterns
   // camera follow (player stays centered)
   updateCamOffset(dt);
   // the focus point follows the player; the camera orbits it at the current tilt,
@@ -3624,6 +3655,7 @@ function update(dt) {
   camera.position.copy(camFocus).add(camOffset);
   _camLook.set(camFocus.x, camFocus.y + 1.0, camFocus.z);
   if (ward.blend > 0) { wardCam(_wardPos, _wardLook); const e = ward.blend * ward.blend * (3 - 2 * ward.blend); camera.position.lerp(_wardPos, e); _camLook.lerp(_wardLook, e); }
+  if (settings.debug && window.__camAbs) { const c = window.__camAbs; camera.position.set(c[0], c[1], c[2]); _camLook.set(c[3], c[4], c[5]); if (c[6] && camera.fov !== c[6]) { camera.fov = c[6]; camera.updateProjectionMatrix(); } }   // SCENERY: a free camera for the low title-screen views (debug only)
   if (settings.debug && window.__camPeek) { const c = window.__camPeek, h = body.root.position; camera.position.set(h.x + c[0], h.y + c[1], h.z + c[2]); _camLook.set(h.x + (c[5] || 0), h.y + c[3], h.z + (c[4] || 0)); }   // debug: close-up for mockups and tests
   camera.lookAt(_camLook);
   sun.target.position.set(player.pos.x, 0, player.pos.z - 4);
@@ -3802,7 +3834,8 @@ function frame() {
     // TACKLE: what the rods file borrows on top of that
     Object.assign(fishApi, { parseGLB, DOCK, bodies: () => Object.values(bodies), worldRod: () => worldRod && { rod: worldRod, tip: worldRodTip },
       fishingBusy: () => fishing.state !== 'idle', fishingPlace: () => fishing.place, freshNear: (x, z) => !!spots.freshTarget(x, z) });
-    spots.init(fishApi); dex.init(fishApi); tackle.init(fishApi); spots.sweepSave(); }
+    spots.init(fishApi); dex.init(fishApi); tackle.init(fishApi); spots.sweepSave();
+    reel.init({ ...fishApi, fishing, joy, useBtn, setFish, reelIn, landFish, elapsed: () => elapsed, debug: () => !!settings.debug, perk: () => tackle.perks(fishing.place).reel }); }   // REEL
   restorePlots();
   restoreDecor();
   ensureCropsInUse();
@@ -3822,7 +3855,7 @@ function frame() {
   let skip = false; try { skip = sessionStorage.getItem('tidewell.skipMenu') === '1'; sessionStorage.removeItem('tidewell.skipMenu'); } catch (e) {}
   if (skip) startGame(); else showMainMenu();
   window.__ready = true;
-  window.__tidewell = { pets, get merchant() { return merchant; }, THREE, scene, sun, hemi, TOD, camera, player, get S() { return S; }, fishing, settings, decor, cropIcon, farm, get body() { return body; }, fishIcon, spots, dex, tackle, farmToolMesh, plots, lotView, get clr() { return clr; }, inRock, get dig() { return digModels; }, setLook: (l) => { for (const b of Object.values(bodies)) setLook(b, l); }, joy };   // used by tools/ (screenshots, tests)
+  window.__tidewell = { scenery, pets, get merchant() { return merchant; }, THREE, scene, sun, hemi, TOD, camera, player, get S() { return S; }, fishing, settings, decor, cropIcon, farm, get body() { return body; }, fishIcon, spots, dex, tackle, reel, farmToolMesh, plots, lotView, get clr() { return clr; }, inRock, get dig() { return digModels; }, setLook: (l) => { for (const b of Object.values(bodies)) setLook(b, l); }, joy };   // used by tools/ (screenshots, tests)
   clock.getDelta();
   requestAnimationFrame(frame);
   // Everything else loads quietly in the background, one pack at a time so the game stays smooth:
