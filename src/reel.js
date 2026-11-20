@@ -77,6 +77,10 @@ const CSS = `
 /* v0.1.109 (Mac): while the line is out, the button sits big in the bottom middle, under your character, where a phone keyboard would be, so the thumb has room to slide both ways */
 body.lineout #useBtn { position: fixed !important; left: 50%; bottom: calc(112px + env(safe-area-inset-bottom)); margin: 0 0 0 -50px; width: 100px; height: 100px; font-size: 16px; z-index: 6; }
 body.lineout .petHeart { display: none !important; }   /* a pet's heart bubble could sit on top of the button */
+/* v0.1.120 (a tester's phone): crate bubbles on the dock sat on top of the fishing button. While the line is out the
+   button's layer goes above every bubble, and the dock's crate bubbles hide. */
+body.lineout #actions { z-index: 8; }
+body.lineout #cargoBubbles, body.lineout #cargoPay, body.lineout #cargoNext { display: none !important; }
 body.lineout #useBtn svg:not(#reelRing) { width: 34px; height: 34px; }
 body.lineout #reelRing { left: -9px; top: -9px; width: 112px; height: 112px; }
 /* v0.1.111 (Mac: "the tool bar never faded out of focus"): the toolbar and menu fade and blur for as long as the line is out,
@@ -104,7 +108,8 @@ body.reelwarn #useBtn { background: #ffd23f !important; color: #2b2140 !importan
 #reelEdge.warn { opacity: 1; box-shadow: inset 0 0 46px 10px rgba(255,210,63,.75); }
 #reelEdge.red { opacity: 1; box-shadow: inset 0 0 60px 16px rgba(229,72,77,.85); }
 #reelSay { position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%); white-space: nowrap; font-weight: 800; font-size: 20px; color: #fff; background: #e5484d; border: 3px solid #2b2140; border-radius: 999px; padding: 3px 14px; box-shadow: 0 3px 0 rgba(43,33,64,.4); }
-/* the signal sits over the catch bar the whole fight (Mac): green Reel, yellow Careful!, red Let go! */
+/* the signal sits over the catch bar the whole fight (Mac): green Reel, yellow Careful!, red Stop! (with an open hand) */
+#reelSay { display: flex; align-items: center; gap: 4px; }
 #reelSay { background: #57c95a; color: #2b2140; }
 #reelBar.warn #reelSay { background: #ffd23f; color: #2b2140; }
 #reelBar.red #reelSay { background: #e5484d; color: #fff; font-size: 23px; }
@@ -120,7 +125,7 @@ export function init(api) {
   hud.innerHTML = '<div id="reelHearts"></div><div id="reelCue" hidden></div>';
   document.body.appendChild(hud);
   fx = document.createElement('div'); fx.id = 'reelFx'; fx.hidden = true; document.body.appendChild(fx);
-  bar = document.createElement('div'); bar.id = 'reelBar'; bar.hidden = true; bar.innerHTML = '<i></i><b id="reelSay">Let go!</b>'; document.body.appendChild(bar); barFill = bar.firstChild; say = bar.lastChild;
+  bar = document.createElement('div'); bar.id = 'reelBar'; bar.hidden = true; bar.innerHTML = '<i></i><b id="reelSay">Reel</b>'; document.body.appendChild(bar); barFill = bar.firstChild; say = bar.lastChild;
   halo = document.createElement('div'); halo.id = 'reelHalo'; halo.hidden = true; document.body.appendChild(halo);
   edge = document.createElement('div'); edge.id = 'reelEdge'; document.body.appendChild(edge);
   const b = A.useBtn; b.style.position = 'relative'; b.style.touchAction = 'none';
@@ -259,7 +264,7 @@ export function update(dt) {
   const hp = tmp.h || (tmp.h = new A.THREE.Vector3()); hp.set(A.player.pos.x, A.player.pos.y + 2.25, A.player.pos.z).project(A.camera);
   bar.style.transform = `translate(${Math.round((hp.x + 1) / 2 * innerWidth)}px,${Math.round((1 - hp.y) / 2 * innerHeight)}px) translate(-50%,-100%)`;
   barFill.style.width = Math.round(Math.min(1, fight.prog) * 100) + '%';
-  const cls = red ? 'red' : warn ? 'warn' : ''; if (bar.className !== cls) { bar.className = cls; halo.className = cls; edge.className = cls; say.textContent = red ? 'Let go!' : warn ? 'Careful!' : 'Reel'; document.body.classList.toggle('reelwarn', warn); }
+  const cls = red ? 'red' : warn ? 'warn' : ''; if (bar.className !== cls) { bar.className = cls; halo.className = cls; edge.className = cls; say.innerHTML = red ? `${A.svg('hand', '#fff', 20)} Stop!` : warn ? 'Careful!' : 'Reel'; document.body.classList.toggle('reelwarn', warn); }
   fx.hidden = !red;
   if (red) {
     v.project(A.camera);
@@ -268,5 +273,5 @@ export function update(dt) {
     if (fx.dataset.k !== 't') { fx.dataset.k = 't'; fx.innerHTML = '<i></i>'; }
   }
   if (fight.done === 'won') { end(); A.landFish(); }
-  else if (fight.done === 'lost') { const snap = fight.snapped; end(); A.toast(snap ? 'Snap! Let go on red' : 'It got away!'); A.audio.play(snap ? 'snap' : 'miss'); A.setFish('reel'); }
+  else if (fight.done === 'lost') { const snap = fight.snapped; end(); A.toast(snap ? 'Snap! Lift your thumb on red' : 'It got away!'); A.audio.play(snap ? 'snap' : 'miss'); A.setFish('reel'); }
 }

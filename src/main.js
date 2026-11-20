@@ -1327,7 +1327,7 @@ const ACTIONS = {
   dig: { label: 'Dig', icon: 'shovel', color: '#a8743f' },
   needtool: { label: 'Need', icon: 'lock', color: '#9a8fae' },
   collect: { label: 'Collect', icon: 'coin', color: '#e0a020' },
-  fight: { label: 'Reel', icon: 'reel', color: '#9fdc95', soft: true }, fightstop: { label: 'Let go!', icon: 'hand', color: '#e5484d' },   // REEL
+  fight: { label: 'Reel', icon: 'reel', color: '#9fdc95', soft: true }, fightstop: { label: 'Stop!', icon: 'hand', color: '#e5484d' },   // REEL
   take: { label: 'Take', icon: 'worm', color: '#3ea6e8' }, nobait: { label: 'No bait', icon: 'worm', color: '#b9b4c4', soft: true },   // FISHING
 };
 function setUse(a) {
