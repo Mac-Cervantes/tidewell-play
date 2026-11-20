@@ -715,7 +715,7 @@ function syncPuppets() {
   // ANIM: after the copy, stand upright while idle (anim.posture); fishing and farm tools keep their own poses
   const busy = farm.mode !== 'off' ? 2 : fishing.state !== 'idle' || rodState.w > 0.01 ? 1 : 0;
   for (const b of [body, higgins && higgins.b, fishel && fishel.b, rosa && rosa.b, pike && pike.b]) if (b && b.root.visible) { syncPuppet(b); anim.posture(b, b === body ? busy : pike && b === pike.b ? 1 : 0); }
-  placePikeRod();
+  placePikeRod(); placeHandRod();
   // hanging from a farm tool: the dummy's arms are shorter than the rig's, so lift it until its hands meet the handle
   const P = body && body.puppet; if (!P) return;
   const tm = farmToolMesh[farmSel()];
@@ -1265,7 +1265,9 @@ function applyRodPose(dt) {
   // one hand while idle or walking and for the flick; the left hand joins just above the right once the line is out
   const both = ['wait', 'bite', 'catch', 'fight'].includes(fishing.state);
   r.lw += ((both ? 1 : 0) - r.lw) * Math.min(1, dt * (both ? 6 : 12));
-  if (r.lw > 0.02) solveArm(b, 'L', grip.clone().addScaledVector(dir, 0.085 * S), down.clone().addScaledVector(right, -0.6), r.w * r.lw);
+  if (!r.fixL) r.fixL = new THREE.Vector3();
+  if (r.lw > 0.02) solveArm(b, 'L', grip.clone().addScaledVector(dir, 0.085 * S).add(r.fixL), down.clone().addScaledVector(right, -0.6), r.w * r.lw);
+  r.dir = dir; r.S = S;
   worldRod.position.copy(grip).addScaledVector(dir, -0.08 * S);
   worldRod.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
   worldRod.scale.setScalar(S);
@@ -2540,7 +2542,7 @@ function makePike() {
   dressNPC(b, 'pike');
   if (b.tools.rod) b.tools.rod.visible = false;                   // that one hangs off the hidden rig's fist, not the hand you see
   const pos = new THREE.Vector3(PIKE_AT.x, 0, PIKE_AT.z);
-  pike = { b, pos, yaw: PIKE_AT.yaw, rod: null, dir: new THREE.Vector3() };
+  pike = { b, pos, yaw: PIKE_AT.yaw, rod: null, dir: new THREE.Vector3(), fixL: new THREE.Vector3() };
   b.root.position.set(pos.x, groundY(pos.x, pos.z), pos.z); b.root.rotation.y = pike.yaw;
 }
 function updatePike(dt) {
@@ -2555,15 +2557,38 @@ function updatePike(dt) {
   const grip = b.bones.Torso.getWorldPosition(new THREE.Vector3()).addScaledVector(f, 0.3 * K).addScaledVector(right, 0.04 * K); grip.y -= 0.1 * K;
   const dir = pike.dir.copy(f).multiplyScalar(Math.cos(0.6)).add(_pv.set(0, Math.sin(0.6), 0)).normalize();
   solveArm(b, 'R', grip, new THREE.Vector3(0, -1, 0).addScaledVector(right, 0.6), 1);
-  solveArm(b, 'L', grip.clone().addScaledVector(dir, 0.085 * K), new THREE.Vector3(0, -1, 0).addScaledVector(right, -0.6), 1);
+  solveArm(b, 'L', grip.clone().addScaledVector(dir, 0.085 * K).add(pike.fixL), new THREE.Vector3(0, -1, 0).addScaledVector(right, -0.6), 1);
 }
 const _pkF = new THREE.Vector3(), _pkR = new THREE.Vector3();
+// v0.1.123 (Mac: "does the player character have the same issue?" — it did, worse): the rod was put where the arm
+// solver aimed the wrist, so both palms sat 11 to 15 cm off it. After the visible body copies the pose, the rod goes
+// into the right fist, and the left hand's aim is nudged each frame until its palm closes on the rod too.
+function placeHandRod() {
+  const r = rodState; if (!worldRod || !worldRod.visible || !r.dir || !body.puppet) return;
+  const k = body.puppet.k, ri = k.getObjectByName('RightHandIndex1'), rt = k.getObjectByName('RightHandThumb2'); if (!ri || !rt) return;
+  const fist = ri.getWorldPosition(new THREE.Vector3()).add(rt.getWorldPosition(_pv)).multiplyScalar(0.5);
+  worldRod.position.copy(fist).addScaledVector(r.dir, -0.08 * r.S);
+  const li = k.getObjectByName('LeftHandIndex1'), lt = k.getObjectByName('LeftHandThumb2');
+  if (li && lt && r.lw > 0.5) {
+    const palm = li.getWorldPosition(new THREE.Vector3()).add(lt.getWorldPosition(_pv)).multiplyScalar(0.5);
+    const on = worldRod.position.clone().addScaledVector(r.dir, palm.clone().sub(worldRod.position).dot(r.dir));
+    r.fixL.addScaledVector(palm.sub(on), -0.5); if (r.fixL.length() > 0.2 * r.S) r.fixL.setLength(0.2 * r.S);
+  } else if (r.fixL) r.fixL.multiplyScalar(0.8);
+}
 function placePikeRod() {
   if (!pike || !pike.rod || !pike.b.puppet) return;
   const k = pike.b.puppet.k, a = k.getObjectByName('RightHandIndex1'), c = k.getObjectByName('RightHandThumb2'); if (!a || !c) return;
   const fist = a.getWorldPosition(new THREE.Vector3()).add(c.getWorldPosition(_pv)).multiplyScalar(0.5), K = pike.b.H / 1.7;
   pike.rod.position.copy(fist).addScaledVector(pike.dir, -0.08 * K);
   pike.rod.quaternion.setFromUnitVectors(UPV, pike.dir); pike.rod.scale.setScalar(K);
+  // v0.1.122 (Mac: "Old Pike is holding the rod with his wrists and not his palms"): the arm solver aims the wrist, so the
+  // left palm sat about 8 cm off the rod. Each frame, nudge the left hand's aim by how far its palm misses the rod.
+  const li = k.getObjectByName('LeftHandIndex1'), lt = k.getObjectByName('LeftHandThumb2');
+  if (li && lt) {
+    const palm = li.getWorldPosition(new THREE.Vector3()).add(lt.getWorldPosition(_pv)).multiplyScalar(0.5);
+    const r = palm.clone().sub(pike.rod.position), on = pike.rod.position.clone().addScaledVector(pike.dir, r.dot(pike.dir));
+    pike.fixL.addScaledVector(palm.sub(on), -0.5); if (pike.fixL.length() > 0.2 * K) pike.fixL.setLength(0.2 * K);
+  }
   // a line from the rod tip to a bobber sitting in the river mouth (Mac, v0.1.101). The bobber stays put when he turns to you.
   if (!pike.line && fishLine && bobber) {
     pike.line = fishLine.clone(); pike.bob = bobber.clone(true); pike.line.visible = pike.bob.visible = true; scene.add(pike.line, pike.bob);
@@ -3856,7 +3881,7 @@ function frame() {
   let skip = false; try { skip = sessionStorage.getItem('tidewell.skipMenu') === '1'; sessionStorage.removeItem('tidewell.skipMenu'); } catch (e) {}
   if (skip) startGame(); else showMainMenu();
   window.__ready = true;
-  window.__tidewell = { scenery, pets, get merchant() { return merchant; }, THREE, scene, sun, hemi, TOD, camera, player, get S() { return S; }, fishing, settings, decor, cropIcon, farm, get body() { return body; }, fishIcon, spots, dex, tackle, reel, farmToolMesh, plots, lotView, get clr() { return clr; }, inRock, get dig() { return digModels; }, setLook: (l) => { for (const b of Object.values(bodies)) setLook(b, l); }, joy };   // used by tools/ (screenshots, tests)
+  window.__tidewell = { get pike() { return pike; }, get worldRod() { return worldRod; }, get rodState() { return rodState; }, scenery, pets, get merchant() { return merchant; }, THREE, scene, sun, hemi, TOD, camera, player, get S() { return S; }, fishing, settings, decor, cropIcon, farm, get body() { return body; }, fishIcon, spots, dex, tackle, reel, farmToolMesh, plots, lotView, get clr() { return clr; }, inRock, get dig() { return digModels; }, setLook: (l) => { for (const b of Object.values(bodies)) setLook(b, l); }, joy };   // used by tools/ (screenshots, tests)
   clock.getDelta();
   requestAnimationFrame(frame);
   // Everything else loads quietly in the background, one pack at a time so the game stays smooth:
