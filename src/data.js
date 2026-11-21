@@ -1,7 +1,7 @@
 // Tidewell game data. Everything tunable lives here as plain tables so it can be
 // exported to JSON for the Unity version later (see tools/export-data.mjs).
 
-export const VERSION = '0.1.127';
+export const VERSION = '0.1.133';
 export const VERSION_LABEL = 'BETA v' + VERSION;
 
 // Rarity tiers (decision 36). `weight` is the base chance per bite with worms.
@@ -433,7 +433,7 @@ export const REEL_RULES = {
   slip: 0.02,       // fish lost per second while the line is slack (forgiving)
   runSlip: 0.05,    // and while it runs on a pull
   slackMax: 10,     // seconds without reeling before the fish gets away
-  closer: 0.7,      // how much of the way to you the fish comes by the time it's landed
+  closer: 0.8,      // how much of the way to you the fish comes by the time it's landed
   rodBoost: 0.25,   // the better rods wind this much faster in their own water
   nibWin: 0.7,      // seconds a nibble lasts (a tap in here is too early)
   nibGap: 1.0,      // least seconds between nibbles, and before the real bite

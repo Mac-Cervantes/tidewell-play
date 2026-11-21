@@ -19,6 +19,8 @@ import * as anim from './anim.js';   // ANIM (try/run): walk/run/idle live in an
 import * as spots from './fishing-spots.js';   // FISHING (try/fishing): the river, the lake and the bait rule; hooks marked FISHING below
 import * as goals from './goals.js';         // GOALS: the first ten goals (card, path, glow, hand); hooks marked GOALS
 import * as dex from './fishdex.js';            // FISHING: the fish book, hints and sightings
+import { createAimHint } from './aimhint.js';      // AIM: the cast's landing spot and the water-tap hand
+import { sitPose, SIT } from './sit.js';             // SIT: sitting on a bench
 import * as tackle from './tackle.js';          // TACKLE (try/fishing): rods, cast feels, jetty, dock steps; hooks marked TACKLE below
 import * as reel from './reel.js';              // REEL (try/reel): fake nibbles and the reeling mini-game; hooks marked REEL
 import { scenery } from './scenery.js';        // SCENERY (try/scenery): sea rocks, the lighthouse and other things to look at; hooks marked SCENERY
@@ -37,8 +39,26 @@ audio.bindSettings(settings, storeSettings);
 let S = loadSave(settings.debug);
 seedLevel(S);
 clearShopGround(S);
+moveDockSave(S);
 // v0.1.55: Nell's store and Rosa's moved cart stand on ground that older saves may have built on. Decor there goes back
 // into the bag and plots there are dropped (Mac). Same circles as the no-till zones (store.js; ROSA_CART below).
+// v0.1.133: the dock, Fishel's stall, the worm bucket and Higgins moved (see DOCK_X). Once per save: decor and plots on their
+// new ground go back to the bag, and a player who was standing on the old dock is carried over to the new one.
+function moveDockSave(st) {
+  if (st.dockMid) return; st.dockMid = 1;
+  const zones = [[-1.7, 0.2, 1.3], [4.2, -1.4, 2.0], [2.8, -0.9, 1.0], [5.95, -0.85, 0.8]];
+  const hit = (x, z) => zones.some(([zx, zz, r]) => Math.hypot(x + 0.5 - zx, z + 0.5 - zz) < r);
+  let n = 0;
+  st.decor = (st.decor || []).filter(d => {
+    if (!DECOR[d.id] || !cellsOf(d.id, d.x, d.z, d.r).some(k => hit(...k.split(',').map(Number)))) return true;
+    st.inv['decor_' + d.id] = (st.inv['decor_' + d.id] || 0) + 1; n++; return false;
+  });
+  const before = (st.plots || []).length;
+  st.plots = (st.plots || []).filter(p => !hit(p.x, p.z));
+  n += before - st.plots.length;
+  if (Array.isArray(st.pos) && st.pos[1] < -3.3) st.pos[0] -= 2.4;   // you were on the dock: it moved 2.4 m left
+  if (n) setTimeout(() => toast('The dock moved! Some things went back to your bag to make room.'), 4000);
+}
 function clearShopGround(st) {
   const zones = [[-6.6, -0.5, 3.5], [-11.4, -0.9, 2.4]];
   const hit = (x, z) => zones.some(([zx, zz, r]) => Math.hypot(x + 0.5 - zx, z + 0.5 - zz) < r);
@@ -220,13 +240,15 @@ function groundY(x, z) {
 const C = (h) => new THREE.Color(h);
 const GC = { grass: C('#7cc957'), grass2: C('#6dbb4c'), sand: C('#f2dc9b'), wet: C('#d9bf7c'), path: C('#e2c48c'),
   wild: C('#4f9a45'), wild2: C('#448a3c'), plaza: C('#e8d2a0') };
+// The dirt path runs straight down the middle of your land (x = 0), the same line as the dock (v0.1.133, Mac: mockup C).
+const pathCx = () => 0;
 function groundColor(x, z) {
   const c = new THREE.Color();
   const n = noise(x * 2.1, z * 2.3);
   c.copy(n > 0.1 ? GC.grass : GC.grass2);
   const wildT = smooth(FENCE_Z + 0.05, FENCE_Z + 1.05, z);
   if (wildT > 0) c.lerp(n > 0 ? GC.wild : GC.wild2, wildT);
-  const onPath = Math.abs(x - 0.0 + Math.sin(z * 0.35) * 0.3) < 1.05 && z > -3.2 && z < LOTS_BACK + 1.5;
+  const onPath = Math.abs(x - pathCx(z)) < 1.05 && z > -3.2 && z < LOTS_BACK + 1.5;   // straight, no wobble, so both edges sit evenly inside the dock's width (Mac)
   if (onPath) c.lerp(GC.path, 0.95);
   const s = smooth(-1.8, -3.2, z);
   if (s > 0) c.lerp(GC.sand, s);
@@ -351,7 +373,7 @@ const rnd = mulberry32(20261105);
 const lanternLights = [];
 const lampProbe = { intensity: 0 }; lanternLights.push(lampProbe);   // SCENERY: gets the same brightness as every lantern (time of day and rain), read by the lighthouse lamp
 const lanternLamps = () => lampProbe.intensity;
-const FISHEL_STALL = { x: 6.6, z: -1.8 };   // 2 m further right than before v0.1.63, away from the dock (Mac)
+const FISHEL_STALL = { x: 4.2, z: -1.8 };   // 4.2 m right of the dock's middle (Mac, v0.1.63: not too close to the dock); it slid over with the dock in v0.1.133
 const BOARD = { x: -3.6, z: -1.7 };   // moved away from Higgins in v0.1.43 (Mac: too close)
 const ROSA_CART = { x: -11.4, z: -0.9, r: -0.35 };   // Rosa's Flowers, on the beach row left of the board (decision 61)   // the order board, left of Higgins (decision 50)
 // --- the dock is walkable: a corridor down its middle, height found by raycasting onto the planks
@@ -372,7 +394,12 @@ function furlSails(ship, k) {
 // extra dock sections (2.12 m each) beyond the first four; everything at the dock's end moves out with them
 // (two more since v0.1.81, mockup B: a longer, wider dock so the crates and their bubbles have room. Mac)
 const DOCK_MORE = ((typeof window !== 'undefined' && window.__cargoLab) || {}).extra ?? 2, DOCK_ADD = DOCK_MORE * 2.12;
-const SHIP_AT = { x: 2.4, z: -13.2 - DOCK_ADD }, SHIP_IN = { x: -34, z: -13.2 - DOCK_ADD }, SHIP_OUT = { x: 36, z: -13.2 - DOCK_ADD }, SHIP_ROT = Math.PI / 2;
+// v0.1.133 (Mac: "it bugs me that the dock doesn't line up with the path", mockup C): the dock moved from x = 2.4 to the middle,
+// on the path's line. The ship, crates, flag, steps and pets' spots are all placed from DOCK, so they moved with it. Fishel's
+// stall and the worm bucket slid over by the same 2.4 m, and Higgins stepped aside to the left edge of the path.
+const DOCK_X = 0;
+const HIGGINS_AT = { x: -1.7, z: 0.2 };
+const SHIP_AT = { x: DOCK_X, z: -13.2 - DOCK_ADD }, SHIP_IN = { x: -34, z: -13.2 - DOCK_ADD }, SHIP_OUT = { x: 36, z: -13.2 - DOCK_ADD }, SHIP_ROT = Math.PI / 2;
 // the ship's hull at the dock, for casts (you cast off the sides of the dock, not into the ship)
 function shipBlocks(px, pz, x, z) {   // does a cast from (px, pz) to (x, z) land on or fly over the ship?
   if (!merchant || !merchant.visible || cargo.sailing() || z > -11.0 - DOCK_ADD) return false;
@@ -380,7 +407,7 @@ function shipBlocks(px, pz, x, z) {   // does a cast from (px, pz) to (x, z) lan
   const t = (SHIP_AT.z - pz) / (z - pz); return t > 0 && t < 1 && Math.abs(px + (x - px) * t - SHIP_AT.x) < 4.4;
 }
 const DOCK_WIDE = ((typeof window !== 'undefined' && window.__cargoLab) || {}).wide ?? 2;   // extra planks beyond four (0.485 m each): six planks wide since v0.1.81
-const DOCK = { x: 2.4, half: 0.97 + DOCK_WIDE * 0.2425, zNear: -3.2, zFar: -11.1 - DOCK_ADD };
+const DOCK = { x: DOCK_X, half: 0.97 + DOCK_WIDE * 0.2425, zNear: -3.2, zFar: -11.1 - DOCK_ADD };
 function onDock(x, z) { return Math.abs(x - DOCK.x) < DOCK.half && z <= DOCK.zNear && z >= DOCK.zFar; }
 // the fence between your land and the wilds; it moves back each time you buy a lot (decision 69, layout D)
 const FENCE_Z0 = 7.55;
@@ -745,6 +772,7 @@ function syncPuppets() {
       tm.position.copy(fist).sub(_pv.set(g[0], g[1], g[2]).multiplyScalar(tm.scale.x).applyQuaternion(tm.quaternion));
     }
   } else if (P.k.position.lengthSq()) { P.k.position.set(0, 0, 0); P.k.updateMatrixWorld(true); }
+  if (body.puppet) { const lab = window.__sitLab; if (lab) sitPose(body, SIT[lab.pose || 'A'], 1, clock.elapsedTime, lab.seat ?? null); else if (sit.w > 0) sitPose(body, SIT[sit.pose], sit.e, clock.elapsedTime, sit.seatY); }   // SIT (and its mockup switch)
 }
 
 // ---------- wardrobe (decision 63: mockup A + swipe to turn) ----------
@@ -1035,6 +1063,7 @@ const ICON = {
   x: '<path d="M6 6l12 12M18 6L6 18"/>',
   pin: '<path d="M12 17v4M8 3h8l-1 6 3 3H6l3-3z"/>',
   lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
+  sit: '<path d="M3 11h18"/><path d="M5 11v8"/><path d="M19 11v8"/><path d="M5 15h14"/>', stand: '<path d="M12 19V6"/><path d="M6 12l6-6 6 6"/>',   // SIT
   board: '<rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M7 20l1-4M17 20l-1-4M7 8h4M7 11h6M14 8h3"/>',
   heart: '<path d="M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.5A4 4 0 0 1 19 10c0 5.5-7 10-7 10z"/>',
   coin: '<circle cx="12" cy="12" r="8.5"/><path d="M12 8v8"/>',
@@ -1152,18 +1181,27 @@ function solveArm(b, side, target, poleDir, w) {
   aimBone(lo, fist.position, T, w);
 }
 // fishing: idle -> flick (tap Cast) -> flight -> wait -> bite -> catch -> reel -> idle
-const CAST_DIST = 3.4;   // how far a tap-cast lands, in metres. Short on purpose (Mac, v0.1.110): the bobber and the fish stay close enough to see. Was 7.5 plus the sea rod's extra reach.
+const CAST_DIST = 7.5;   // how far a tap-cast lands, in metres. Back to the long cast in v0.1.128 (Mac: "we can cast out further like before since we bring the fish in"); it was 3.4 from v0.1.110 so the fish stayed in view.
 const fishing = { state: 'idle', t: 0, land: new THREE.Vector3(), from: new THREE.Vector3(), wait: 3, dist: 0, a: 0.75 };
 function bestBait() { return BAIT_ORDER.find(b => invCount(b) > 0) || null; }   // FISHING: no bare hook any more
 function setFish(st) { fishing.state = st; fishing.t = 0; }
+let aimHint = null;   // AIM: set up below
+// AIM (v0.1.129): the Cast button never lands the bobber off the screen. If the long cast would, it's pulled in toward you
+// (down to about 2.6 m) until the landing spot shows.
 function castTarget() {
+  const p = castTargetFar(); if (!aimHint || aimHint.inView(p, WATER_Y)) return p;
+  const d = Math.hypot(p.x - player.pos.x, p.z - player.pos.z); if (d < 2.7) return p;
+  for (let k = 0.9; k * d >= 2.6; k -= 0.05) { const q = new THREE.Vector3(player.pos.x + (p.x - player.pos.x) * k, 0, player.pos.z + (p.z - player.pos.z) * k); if (aimHint.inView(q, WATER_Y) && aimWater(q.x, q.z)) return q; }
+  return p;
+}
+function castTargetFar() {
   const ft = player.pos.z > -2.6 ? spots.freshTarget(player.pos.x, player.pos.z) : null; if (ft) return new THREE.Vector3(ft.x, 0, ft.z);   // FISHING: by the river or lake, cast there
   // aim the way you face; if you face inland, aim out to sea
   const f = new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw));
   if (onDock(player.pos.x, player.pos.z)) { if (Math.abs(f.x) < 0.35 && f.z > -0.5) f.set(Math.sign(f.x || 1), 0, -0.4); }
   else if (f.z > -0.3) f.set(f.x * 0.5, 0, -1);
   f.normalize();
-  const p = player.pos.clone().addScaledVector(f, CAST_DIST);   // (the sea cast still zips flat and fast; it just no longer lands further out)
+  const p = player.pos.clone().addScaledVector(f, CAST_DIST + tackle.seaReach());   // TACKLE: the sea cast zips further out
   p.z = Math.min(p.z, -5.4);
   if (Math.abs(p.x - DOCK.x) < DOCK.half + 0.7 && p.z > DOCK.zFar - 1) p.x = DOCK.x + Math.sign(p.x - DOCK.x || 1) * (DOCK.half + 1.0);
   if (shipBlocks(player.pos.x, player.pos.z, p.x, p.z)) { p.x = DOCK.x + Math.sign(f.x || 1) * (DOCK.half + 2.6); p.z = Math.min(-5.4, Math.max(player.pos.z - 1.2, -10.6 - DOCK_ADD)); }   // the ship's at the end of the dock: cast off the side
@@ -1194,7 +1232,28 @@ function landFish() {
   showCatch(fish);
 }
 function reelIn() { if (fishing.state !== 'idle' && fishing.state !== 'reel') { setFish('reel'); audio.play('reel'); } }
+// AIM (v0.1.129, mockup C): the landing spot for Cast, and a hand teaching the water tap until you've tap-cast twice
+aimHint = createAimHint({ THREE, camera, handSrc: './assets/ui/hand.svg' }); const aim2 = { t: 0, at: null, tap: null };
+const AIM_TAPS = 2;
+function aimWater(x, z) { return (spots.isWet(x, z) || z < -5.4) && !onDock(x, z) && !tackle.onDeck(x, z) && !shipBlocks(player.pos.x, player.pos.z, x, z); }
+function updateAimHint(dt) {
+  const on = tool === 'rod' && fishing.state === 'idle' && useAction && useAction.kind === 'cast' && !useBtn.hidden && !decor.on && !busyForLevelCard();
+  if (!on) { if (aim2.at) { aim2.at = null; aimHint.update(null); } aim2.t = 0; return; }
+  aim2.t -= dt;
+  if (aim2.t <= 0) {                                              // a few times a second is plenty
+    aim2.t = 0.2; aim2.at = castTarget(); aim2.tap = null;
+    if ((S.tapCasts || 0) < AIM_TAPS) {
+      const dx = aim2.at.x - player.pos.x, dz = aim2.at.z - player.pos.z;
+      for (const [ang, k] of [[-0.55, 0.72], [0.55, 0.72], [-0.3, 0.6], [0.3, 0.6], [-0.8, 0.8], [0.8, 0.8]]) {   // a spot off to one side of the landing spot
+        const c = Math.cos(ang), n = Math.sin(ang), x = player.pos.x + (dx * c - dz * n) * k, z = player.pos.z + (dx * n + dz * c) * k;
+        if (aimWater(x, z) && aimHint.onScreen({ x, z }, WATER_Y)) { aim2.tap = { x, z }; break; }
+      }
+    }
+  }
+  aimHint.update(aim2.at, aim2.tap, WATER_Y);
+}
 function updateFishing(dt) {
+  updateAimHint(dt);
   const F = fishing; F.t += dt;
   if (tool !== 'rod' && F.state !== 'idle') setFish('idle');
   reel.update(dt);   // REEL: nibbles and the fight
@@ -1314,6 +1373,7 @@ const useBtn = document.getElementById('useBtn');
 let useAction = null;
 const ACTIONS = {
   talk: { label: 'Talk', icon: 'chat', color: '#ff9f6b' },
+  sit: { label: 'Sit', icon: 'sit', color: '#c98a5a' }, stand: { label: 'Stand', icon: 'stand', color: '#c98a5a' },   // SIT
   board: { label: 'Orders', icon: 'board', color: '#c98a5a' },
   cast: { label: 'Cast', icon: 'fish', color: '#3ea6e8' },
   reel: { label: 'Reel', icon: 'rod', color: '#3b6fb0' },
@@ -1349,7 +1409,7 @@ useBtn.addEventListener('click', () => doAction(useAction));
 
 // ---------- farming: real-time growth that keeps going while you're away ----------
 const plots = new Map();
-const NO_TILL = [[-0.7, -1.3, 1.3], [FISHEL_STALL.x, FISHEL_STALL.z + 0.4, 2.0], [FISHEL_STALL.x - 1.4, FISHEL_STALL.z + 0.9, 1.0], [BOARD.x, BOARD.z, 1.2], [ROSA_CART.x, ROSA_CART.z, 2.4]];   // Higgins, Fishel's stall, Fishel, order board, Rosa's cart
+const NO_TILL = [[HIGGINS_AT.x, HIGGINS_AT.z, 1.3], [FISHEL_STALL.x, FISHEL_STALL.z + 0.4, 2.0], [FISHEL_STALL.x - 1.4, FISHEL_STALL.z + 0.9, 1.0], [BOARD.x, BOARD.z, 1.2], [ROSA_CART.x, ROSA_CART.z, 2.4]];   // Higgins, Fishel's stall, Fishel, order board, Rosa's cart
 const cellKey = (c) => c.x + ',' + c.z;
 function tillable(c) {
   if (spots.onBank(c.x + 0.5, c.z + 0.5)) return false;   // FISHING
@@ -1499,6 +1559,8 @@ function doAction(a) {
   if (a.cell) player.faceYaw = Math.atan2(cx - player.pos.x, cz - player.pos.z);
   if (a.kind === 'talk') { if (a.key === 'fishel') openBaitShop(); else if (a.key === 'rosa') openRosaShop(); else if (a.key === 'pike') talkPike(); else startTalk(); return; }
   if (a.kind === 'board') { openOrders(true); return; }
+  if (a.kind === 'sit') { sitDown(a.bench); return; }   // SIT
+  if (a.kind === 'stand') { standUp(); return; }
   if (a.kind === 'lot') { openLotSheet(a.lot); return; }
   if (a.kind === 'clear') { startClear(a.item); return; }
   if (a.kind === 'load') { cargo.open(a.box); return; }
@@ -1509,6 +1571,7 @@ function doAction(a) {
   if (a.kind === 'nobait') { toast(spots.noBaitWhy()); return; }   // FISHING
   if (a.kind === 'cast') {
     if (fishing.state !== 'idle') return;
+    if (a.at && (S.tapCasts || 0) < AIM_TAPS) S.tapCasts = (S.tapCasts || 0) + 1;   // AIM: they found the water tap
     beginCast(a.at ? a.at.clone().setY(0) : castTarget());
   } else if (a.kind === 'reel' || a.kind === 'wait') {
     if (!reel.early()) reelIn();   // REEL: a tap on a nibble is too early
@@ -1929,9 +1992,47 @@ function applyFarmPose(dt) {
   if (tm && tm.visible) { tm.position.copy(farm.P); tm.quaternion.copy(b.root.quaternion); tm.scale.setScalar(b.H / 1.7); }
 }
 
+// SIT (v0.1.132; a tester asked to sit down, Mac: benches only, all three poses at random). Walk up to a bench and tap Sit:
+// you hop onto the nearest spot on it, facing away from the bench on your side. Move the stick or tap Stand to get up.
+const sit = { on: false, w: 0, e: 0, pose: 'A', seatY: 0.39, rec: null, from: new THREE.Vector3(), at: new THREE.Vector3(), out: new THREE.Vector3(), yaw: 0 };
+const SIT_SECS = 0.4;   // seconds to sit down or stand up
+function benchShape(rec, m) {
+  if (!m.seat) { const bb = new THREE.Box3().setFromObject(m.g), ex = bb.max.x - bb.min.x, ez = bb.max.z - bb.min.z, alongX = ex > ez;
+    m.seat = { cx: (bb.min.x + bb.max.x) / 2, cz: (bb.min.z + bb.max.z) / 2, alongX, half: Math.max(0.05, Math.max(ex, ez) / 2 - 0.32), deep: Math.min(ex, ez) / 2, top: bb.max.y }; }
+  return m.seat;
+}
+function nearBench() {
+  let best = null;
+  for (const [rec, m] of decorMeshes) {
+    if (rec.id !== 'bench') continue;
+    const sh = benchShape(rec, m), P = player.pos, t = Math.max(-sh.half, Math.min(sh.half, sh.alongX ? P.x - sh.cx : P.z - sh.cz));
+    const x = sh.alongX ? sh.cx + t : sh.cx, z = sh.alongX ? sh.cz : sh.cz + t, d = Math.hypot(P.x - x, P.z - z);
+    if (d < 1.15 && (!best || d < best.d)) best = { rec, sh, x, z, d };
+  }
+  return best;
+}
+function sitDown(nb) {
+  if (sit.w > 0 || !nb) return;
+  const sh = nb.sh, P = player.pos, side = (sh.alongX ? P.z - sh.cz : P.x - sh.cx) >= 0 ? 1 : -1, dx = sh.alongX ? 0 : side, dz = sh.alongX ? side : 0;
+  if (tool !== 'none') selectTool('none');
+  const last = sit.pose, picks = Object.keys(SIT).filter(k => k !== last); sit.pose = picks[Math.floor(Math.random() * picks.length)];   // never the same pose twice in a row
+  sit.rec = nb.rec; sit.from.copy(P); sit.at.set(nb.x + dx * 0.03, 0, nb.z + dz * 0.03); sit.out.set(nb.x + dx * (sh.deep + 0.34), 0, nb.z + dz * (sh.deep + 0.34));
+  sit.yaw = Math.atan2(dx, dz); sit.seatY = sh.top - groundY(nb.x, nb.z); sit.on = true; player.walkTo = null; audio.play('tap');
+}
+function standUp() { if (!sit.on) return; sit.on = false; sit.from.copy(sit.out); }
+function updateSit(dt) {
+  if (!sit.on && sit.w <= 0) return;
+  if (sit.on && (Math.hypot(joy.dx, joy.dy) > 0.35 || decor.on || dlg.open || !decorMeshes.has(sit.rec))) standUp();   // move the stick to get up; also if the bench is picked up
+  sit.w = Math.max(0, Math.min(1, sit.w + (sit.on ? dt : -dt) / (SIT_SECS * (window.__sitSlow || 1)))); sit.e = sit.w * sit.w * (3 - 2 * sit.w);   // __sitSlow: slow motion, for pictures
+  // down: from where you stood onto the seat · up: off the seat to the spot in front of it, with a little hop either way
+  player.pos.lerpVectors(sit.from, sit.at, sit.e); player.pos.y = 0; player.faceYaw = sit.w > 0 ? sit.yaw : null;
+  if (!sit.on && sit.w <= 0) { player.pos.copy(sit.from); player.pos.y = 0; sit.rec = null; }
+}
 function nearWater() { return onDock(player.pos.x, player.pos.z) || player.pos.z < -2.0 || !!spots.freshTarget(player.pos.x, player.pos.z); }   // FISHING: + river and lake
 function pickUse() {
   if (dlg.open || decor.on || farm.mode !== 'off') return null;
+  if (sit.on) return { kind: 'stand', key: 'stand' };   // SIT
+  if (sit.w > 0) return null;
   // people and the board: the closest one wins, and the one you're already facing sticks unless another is
   // clearly closer, so the button doesn't flip back and forth between two of them (Mac)
   if (fishing.state === 'idle') {
@@ -1942,6 +2043,7 @@ function pickUse() {
     if (nearPike()) cand.push({ a: { kind: 'talk', key: 'pike' }, d: d(pike.pos.x, pike.pos.z) });
     if (nearRosa()) cand.push({ a: { kind: 'talk', key: 'rosa' }, d: d(rosa.pos.x, rosa.pos.z) });
     if (nearBoard()) cand.push({ a: { kind: 'board', key: 'board' }, d: d(BOARD.x, BOARD.z + 0.5) });
+    { const nb = tool === 'rod' && nearWater() ? null : nearBench(); if (nb) cand.push({ a: { kind: 'sit', key: 'sit', bench: nb }, d: nb.d + 0.4 }); }   // SIT: a bench you're standing at (people and the board win when both are close)
     if (cand.length) {
       cand.sort((x, y) => x.d - y.d);
       const cur = useAction && cand.find(c => c.a.key === useAction.key);
@@ -2503,7 +2605,7 @@ function makeHiggins() {
   for (const sg of [-1, 1]) { const t = new THREE.Mesh(new THREE.ConeGeometry(0.022 * H, 0.04 * H, 6), red); t.rotation.z = sg * Math.PI / 2; t.position.copy(neck).add(new THREE.Vector3(sg * 0.02 * H, -0.01 * H, 0.05 * H)); stick(b.bones.Neck, t); }
   dress(b, [[/^(UpperLeg|LowerLeg|Hips)/, 0x2a3354], [/^Foot/, 0x1f1a2b]]);   // pants and shoes
   dressNPC(b, 'higgins');
-  const pos = new THREE.Vector3(-0.7, 0, -1.3);
+  const pos = new THREE.Vector3(HIGGINS_AT.x, 0, HIGGINS_AT.z);
   higgins = { b, pos, yaw: Math.PI / 2 };
   b.root.position.set(pos.x, groundY(pos.x, pos.z), pos.z);
 }
@@ -3585,7 +3687,8 @@ function update(dt) {
   elapsed += dt;
   waterUniforms.uTime.value = elapsed;
   // movement
-  let mv = dlg.open || farm.mode !== 'off' || ward.on || fishing.state === 'fight' /* REEL: the thumb steers the fish */ ? new THREE.Vector3() : new THREE.Vector3(joy.dx, 0, joy.dy);
+  updateSit(dt);   // SIT
+  let mv = dlg.open || farm.mode !== 'off' || ward.on || fishing.state === 'fight' /* REEL: the thumb steers the fish */ || sit.w > 0 /* SIT */ ? new THREE.Vector3() : new THREE.Vector3(joy.dx, 0, joy.dy);
   tickWardrobe(dt);
   placeUndo(); tickClear(dt); tickPoofs(dt); tickChips(dt); tickDig(dt); tickSaleBubble(); cargo.tick(dt); spots.frame(); dex.frame(dt); tackle.frame();   // FISHING, TACKLE
   let mag = Math.min(1, mv.length());
@@ -3881,7 +3984,7 @@ function frame() {
   let skip = false; try { skip = sessionStorage.getItem('tidewell.skipMenu') === '1'; sessionStorage.removeItem('tidewell.skipMenu'); } catch (e) {}
   if (skip) startGame(); else showMainMenu();
   window.__ready = true;
-  window.__tidewell = { get pike() { return pike; }, get worldRod() { return worldRod; }, get rodState() { return rodState; }, scenery, pets, get merchant() { return merchant; }, THREE, scene, sun, hemi, TOD, camera, player, get S() { return S; }, fishing, settings, decor, cropIcon, farm, get body() { return body; }, fishIcon, spots, dex, tackle, reel, farmToolMesh, plots, lotView, get clr() { return clr; }, inRock, get dig() { return digModels; }, setLook: (l) => { for (const b of Object.values(bodies)) setLook(b, l); }, joy };   // used by tools/ (screenshots, tests)
+  window.__tidewell = { sit, get pike() { return pike; }, get worldRod() { return worldRod; }, get rodState() { return rodState; }, scenery, pets, get merchant() { return merchant; }, THREE, scene, sun, hemi, TOD, camera, player, get S() { return S; }, fishing, settings, decor, cropIcon, farm, get body() { return body; }, fishIcon, spots, dex, tackle, reel, farmToolMesh, plots, lotView, get clr() { return clr; }, inRock, get dig() { return digModels; }, setLook: (l) => { for (const b of Object.values(bodies)) setLook(b, l); }, joy };   // used by tools/ (screenshots, tests)
   clock.getDelta();
   requestAnimationFrame(frame);
   // Everything else loads quietly in the background, one pack at a time so the game stays smooth:

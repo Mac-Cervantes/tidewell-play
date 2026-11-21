@@ -213,6 +213,7 @@ function path(at, t) {
   }
   for (; n < dots.length; n++) dots[n].visible = false;
 }
+const RING_Y = 0.12;   // above a tilled plot's furrows (their tops are at 0.10); at 0.06 the ring cut through them (Mac, v0.1.131)
 function hideWorld() { hull(null); ring.visible = false; for (const d of dots) d.visible = false; }
 function hideAll() { setGlow(null); hand.hidden = true; arrow.hidden = true; hideWorld(); }
 
@@ -243,13 +244,13 @@ function guide(dt, r) {
   }
   if (drag) {   // "drag your tool here": a ring on the ground and the hand sweeping side to side over it
     hull(null); for (const d of dots) d.visible = false; arrow.hidden = true;
-    const dy = A.floorY(drag.x, drag.z); ring.visible = true; ring.position.set(drag.x, dy + 0.06, drag.z); ring.scale.setScalar(1 + 0.12 * Math.sin(time * 4));
+    const dy = A.floorY(drag.x, drag.z); ring.visible = true; ring.position.set(drag.x, dy + RING_Y, drag.z); ring.scale.setScalar(1 + 0.12 * Math.sin(time * 4));
     const q = screen(drag.x, dy + 0.5, drag.z); place(hand, q.x - 32 + Math.sin(time * 3) * 46, q.y - 44, 90); return;
   }
   if (!at) { hand.hidden = true; arrow.hidden = true; hideWorld(); return; }
   const gy = A.floorY(at.x, at.z);
   hull(at.npc || null);
-  ring.visible = !!at.ring; if (at.ring) { ring.position.set(at.x, gy + 0.06, at.z); ring.scale.setScalar(1 + 0.12 * Math.sin(time * 4)); }
+  ring.visible = !!at.ring; if (at.ring) { ring.position.set(at.x, gy + RING_Y, at.z); ring.scale.setScalar(1 + 0.12 * Math.sin(time * 4)); }
   path(at, time);
   const p = screen(at.x, gy + (at.h || 1.5), at.z), m = 46;
   const off = p.z > 1 || p.x < m || p.x > innerWidth - m || p.y < 150 || p.y > innerHeight - 170;

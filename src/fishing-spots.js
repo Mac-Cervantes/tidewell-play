@@ -62,7 +62,7 @@ export function freshTarget(px, pz) {
 }
 
 // ---------- the bait rule ----------
-const BUCKET = { x: 8.35, z: -0.85 };   // beside Fishel's stall, right side (Mac, v0.1.61; it was at the foot of the dock)
+const BUCKET = { x: 5.95, z: -0.85 };   // beside Fishel's stall, right side (Mac, v0.1.61; it was at the foot of the dock; slid over with the stall in v0.1.133)
 let bucket = null, bucketEl = null, giftEl = null;
 
 function bucketState() {

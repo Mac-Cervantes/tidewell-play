@@ -296,6 +296,9 @@ function legacySpeed(b, v) {
   if (v < 2.5) legacyPlay(b, 'Walk', Math.min(1.5, v / 1.6)); else legacyPlay(b, 'Run', Math.min(1.35, Math.max(0.85, v / 4.2)));
 }
 
+// v0.1.130 (Mac: "make the character animate its running a little faster"): the run takes this many times more steps for the
+// same ground speed (1 = the feet match the ground exactly; above 1 they slide a touch). The run's top speed is unchanged.
+export const RUN_CADENCE = 1.15;
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 // Move a body at ground speed v (m/s) for dt seconds. Call once per frame, before mixer.update.
 export function locomote(b, v, dt) {
@@ -312,7 +315,7 @@ export function locomote(b, v, dt) {
   const w = G.w; w.Idle = 1 - moving; w.Walk = moving * (1 - run); w.Run = moving * run;
   G.wu = w.Idle; G.runMix = run;
   // metres per cycle of what you see (measured on the dummy by calibrate)
-  const stride = G.stride.Walk * (1 - run) + G.stride.Run * run;
+  const stride = G.stride.Walk * (1 - run) + G.stride.Run / RUN_CADENCE * run;
   if (v > 0.05 || !G.pass || g.noSettle) { G.phase = (G.phase + v * dt / stride) % 1; G.settle = null; }
   else if (moving > 0.01) {
     // just let go: finish the step to the next place the legs pass each other, then hold there while
@@ -535,6 +538,7 @@ export function posture(b, busy = 0) {
 // in front; the arm stays close to the side and the hand never crosses the belly.
 // o: { amp: swing (radians), back: extra swing behind, elbow: bend (radians), pump: extra bend in front, open: elbow opens behind, out: away from the side }
 const _ra = new THREE.Vector3(), _rb = new THREE.Vector3(), _rt = new THREE.Vector3(), _rq = new THREE.Quaternion(), _rk = new THREE.Quaternion();
+export function aimBoneK(k, bone, child, target, w) { k.getWorldQuaternion(_rk); aimBone(k, bone, child, target, w); }   // for callers outside this file
 function aimBone(k, bone, child, target, w) {   // turn bone (in the dummy's space) so it points along target
   const cur = k.worldToLocal(child.getWorldPosition(_rb)).sub(k.worldToLocal(bone.getWorldPosition(_ra))).normalize();
   _rq.setFromUnitVectors(cur, target);

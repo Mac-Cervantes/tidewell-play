@@ -171,6 +171,8 @@ function tabby(m, dark) {
 }   // the pack's tuxedo cat; the colours didn't survive the file conversion
 // the cat pack only has Idle and Walking, so every other clip the code asks for falls back to one of those
 const CLIP = { cat: { Idle: 'Idle', Walk: 'Walking', Gallop: 'Walking', Idle_2: 'Idle', Idle_2_HeadLow: 'Idle', Eating: 'Idle', Jump_ToIdle: 'Idle', Death: 'Idle' } };
+const PAWS_SHOW = 4;   // seconds the cat's hearts tag stays up
+let tagClock = 0; const dtTag = () => { const n = performance.now(), d = tagClock ? Math.min(0.1, (n - tagClock) / 1000) : 0; tagClock = n; return d; };
 const rigs = {};
 function buildRig(k) {
   if (rigs[k]) return rigs[k];
@@ -516,7 +518,7 @@ function tickCat(dt) {
   catLoaf(c, dt, c.sp < 0.15 && c.hold <= 0 && !(dP < 1.7), false);   // it stands up when you come right up to it
   c.y = A.floorY(c.x, c.z); c.g.position.set(c.x, c.y, c.z); c.g.rotation.set(0, c.yaw, 0);
 }
-function catPoint(what) {
+function catPoint(what) { if (strays.cat) strays.cat.tagT = 0;   // show the hearts again
   const t = tame(), c = strays.cat; if (!c) return;
   const before = pawsOf(); t.pts++; c.hold = 2.4;
   A.audio.play(what === 'pet' ? 'peep' : 'eggPop'); pop(what === 'pet' ? 'heart' : 'plus', c.x, c.y + 0.6, c.z);
@@ -761,7 +763,10 @@ function placeUI() {
   }
   { // the stray cat's paw tag (mockup A): five paws that fill in, shown when you're near it
     // the paw tag: small, only when you're right by the cat and it's standing still (it was big and rode along while the cat followed you; Mac, v0.1.93)
-    const c = strays.cat, show = !!c && !quiet && (c.sp || 0) < 0.15 && Math.hypot(A.player.pos.x - c.x, A.player.pos.z - c.z) < 3.2;
+    const c = strays.cat, near = !!c && !quiet && (c.sp || 0) < 0.15 && Math.hypot(A.player.pos.x - c.x, A.player.pos.z - c.z) < 3.2;
+    // v0.1.128 (Mac: "the cat's hearts bubble should go away after a while"): it shows for 4 s each time you come up to the cat, then hides until you walk away and back, or give or pet
+    if (c) { c.tagT = near ? (c.tagT || 0) + dtTag() : 0; }
+    const show = near && c.tagT < PAWS_SHOW && !document.body.classList.contains('lineout');
     if (show) {
       const n = pawsOf(); if (ui.paws.dataset.n !== String(n)) { ui.paws.dataset.n = String(n); ui.paws.innerHTML = [0, 1, 2, 3, 4].map(i => `<svg width="13" height="13" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z" fill="${i < n ? '#ff6f7d' : '#fff'}" stroke="${i < n ? '#2b2140' : '#b9b1c6'}" stroke-width="2.4" stroke-linejoin="round"/></svg>`).join(''); ui.paws.setAttribute('aria-label', `${n} of 5 hearts`); }
       const s = project(c.x, c.y + 0.72 * K.cat.length / 0.7, c.z); ui.paws.style.transform = `translate(${Math.round(s.x)}px, ${Math.round(s.y)}px) translate(-50%, -100%)`;
