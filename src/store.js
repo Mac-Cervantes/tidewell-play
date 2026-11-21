@@ -101,20 +101,43 @@ function signBoard(g, x, y, z, w) {
   const m = new THREE.Mesh(new THREE.PlaneGeometry(w, w), new THREE.MeshBasicMaterial({ map: tex, transparent: true })); m.position.set(x, y, z); g.add(m);
   box(g, w + 0.08, w + 0.08, 0.06, 0x7a4a2a, x, y, z - 0.04);
 }
+// The kit's doorway is shorter than the player (Mac: "bumps its head"). Stretch the door and its arch upward inside the same wall:
+// everything up to the door's top grows by DOOR_TALL, and the strip of wall above it squeezes to make room. The wall's own top stays put.
+const DOOR_TALL = 1.2;
+const DOOR_REACH = 0.85, DOOR_LEAN = 0.1;   // how far to either side of the door still counts (was 0.5 m), and how long you lean on it (was 0.25 s)
+function tallDoor(f, wallTop) {
+  f.updateMatrixWorld(true);
+  const d = f.getObjectByName('door'); if (!d) return;
+  const bb = new THREE.Box3().setFromObject(d), top = bb.max.y, cx = (bb.min.x + bb.max.x) / 2, half = wallTop / 2 - 0.03;   // the whole tile but its two edges
+  if (top * DOOR_TALL > wallTop - 0.08) return;
+  const v = new THREE.Vector3(), inv = new THREE.Matrix4();
+  f.traverse(m => {
+    if (!m.isMesh) return;
+    m.geometry = m.geometry.clone(); inv.copy(m.matrixWorld).invert();
+    const pos = m.geometry.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      v.fromBufferAttribute(pos, i).applyMatrix4(m.matrixWorld);
+      if (Math.abs(v.x - cx) > half || v.y <= 0.02 || v.y >= wallTop - 0.01) continue;
+      v.y = v.y <= top ? v.y * DOOR_TALL : top * DOOR_TALL + (v.y - top) / (wallTop - top) * (wallTop - top * DOOR_TALL);
+      v.applyMatrix4(inv); pos.setXYZ(i, v.x, v.y, v.z);
+    }
+    pos.needsUpdate = true; m.geometry.computeBoundingBox(); m.geometry.computeBoundingSphere();
+  });
+}
 function build() {
   const g = new THREE.Group(), fz = T, x0 = -T / 2;
   const front = ['wall-wood-window-shutters', 'wall-wood-door'];
   for (let i = 0; i < 2; i++) {
     const x = x0 + i * T;
     const f = piece(g, 'town', front[i], x, 0, fz - T / 2, -Math.PI / 2);
-    if (i === 1) door = f.getObjectByName('door');
+    if (i === 1) { door = f.getObjectByName('door'); tallDoor(f, T); }
     piece(g, 'town', 'wall-wood', x, 0, -fz + T / 2, Math.PI / 2);
     for (let j = 0; j < 2; j++) piece(g, 'town', 'roof-gable', x, T, -fz + T / 2 + j * T, Math.PI / 2);   // gable toward the camera
   }
   for (let j = 0; j < 2; j++) { const z = -fz + T / 2 + j * T; piece(g, 'town', 'wall-wood', x0 + T, 0, z, 0); piece(g, 'town', 'wall-wood', x0, 0, z, Math.PI); }
   paintRoof(g);
   box(g, 2 * T - 0.2, 0.06, 2 * T - 0.2, 0x8a6a4a, 0, 0.03, 0, { flat: true });       // floor seen through the doorway
-  box(g, 0.9, 1.5, 0.04, 0x3a2a22, T / 2, 0.75, fz - 0.3, { flat: true });             // dark behind the door when it swings
+  box(g, 1.1, T - 0.1, 0.04, 0x3a2a22, T / 2, (T - 0.1) / 2, fz - 0.3, { flat: true });             // dark behind the door when it swings
   box(g, 1.3, 0.04, 0.8, 0xc8443a, T / 2, 0.03, fz + 0.5, { flat: true });             // doormat
   signBoard(g, 0, 2.95, fz + 0.12, 1.05);
   for (const sx of [T / 2 - 0.95, T / 2 + 0.95]) piece(g, 'town', 'lantern', sx, 0, fz + 0.45, 0, 0.5);
@@ -153,7 +176,7 @@ function sync(first) {
 function hit(x, z) { const dx = x - AT.x, dz = z - AT.z; return Math.abs(dx) < HALF && dz < T + 0.25 && dz > -T - 1.2; }
 export function block(np, pos) {
   if (!A || !building || state !== 'out' || !hit(np.x, np.z)) return;
-  if (Math.abs(pos.x - DOOR.x) < 0.5 && np.z < pos.z && !A.busy()) leaning = true;
+  if (Math.abs(pos.x - DOOR.x) < DOOR_REACH && np.z < pos.z && !A.busy()) leaning = true;
   if (!hit(np.x, pos.z)) np.z = pos.z; else if (!hit(pos.x, np.z)) np.x = pos.x; else { np.x = pos.x; np.z = pos.z; }
 }
 
@@ -181,7 +204,7 @@ export function frame(dt) {
   if (door) { doorAng += (doorGoal - doorAng) * Math.min(1, dt * 9); door.rotation.y = doorAng; }
   if (state === 'out') {
     push = leaning ? push + dt : 0; leaning = false;
-    if (building && push > 0.25) { state = 'entering'; t = 0; push = 0; doorGoal = -1.9; A.dlg.open = true; A.audio.play('popOpen'); preload(); }
+    if (building && push > DOOR_LEAN) { state = 'entering'; t = 0; push = 0; doorGoal = -1.9; A.dlg.open = true; A.audio.play('popOpen'); preload(); }
     // the sign's bubble while the shop isn't open yet
     if (plot) {
       const near = Math.hypot(A.player.pos.x - AT.x, A.player.pos.z - (AT.z + T)) < 4.5 && !A.busy();

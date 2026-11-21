@@ -125,6 +125,21 @@ export function create(A, { STORE }) {
 .sttag { position: absolute; transform: translate(-50%, -100%); display: flex; align-items: center; gap: 4px; background: #fffdf5; border: 2px solid #2b2140; border-radius: 11px; padding: 1px 6px 1px 4px; font-weight: 700; font-size: 13px; color: #2b2140; box-shadow: 0 3px 0 rgba(43,33,64,.3); white-space: nowrap; transition: transform .15s ease; }
 .sttag.near { transform: translate(-50%, -100%) scale(1.7); z-index: 2; pointer-events: auto; cursor: pointer; }
 .sttag.own { background: #e9f6dc; }
+.sttag .pr { display: flex; align-items: center; gap: 4px; }
+.sttag .nm { display: none; font-size: 10px; line-height: 1.1; font-weight: 700; text-align: center; }
+.sttag .nm small { display: none; font-size: 7.5px; font-weight: 600; color: #6a5f7c; letter-spacing: .02em; text-transform: uppercase; }
+#stTags[data-names="near"] .sttag.near, #stTags[data-names="all"] .sttag { flex-direction: column; gap: 1px; padding: 2px 6px 2px; }
+#stTags[data-names="near"] .sttag.near .nm, #stTags[data-names="all"] .sttag .nm { display: block; }
+#stTags[data-names="near"] .sttag.near .nm small, #stTags[data-names="all"] .sttag.near .nm small { display: block; }
+#stTags[data-names="all"] .sttag:not(.near) .nm { font-size: 9px; font-weight: 600; }
+#stPlate { position: fixed; right: 150px; left: 14px; bottom: calc(42px + env(safe-area-inset-bottom)); z-index: 6; pointer-events: none; display: flex; justify-content: flex-end; }
+#stPlate[hidden] { display: none; }
+#stPlate div { background: #fffdf5; border: 2px solid #2b2140; border-radius: 14px; padding: 6px 14px; box-shadow: 0 3px 0 rgba(43,33,64,.3); color: #2b2140; font-weight: 700; font-size: 20px; line-height: 1.15; text-align: right; }
+#stPlate small { display: block; font-size: 13px; font-weight: 600; color: #6a5f7c; }
+.sttag[data-kind="decor"] { --kc: #c4508f; } .sttag[data-kind="tool"] { --kc: #2c7dbd; }
+#stTags[data-color="word"] .sttag .nm small { color: var(--kc); font-weight: 700; }
+#stTags[data-color="pill"] .sttag .nm small { color: #fff; background: var(--kc); border-radius: 6px; padding: 1px 5px; margin: 1px auto; width: max-content; font-weight: 700; }
+#stTags[data-color="edge"] .sttag { border-color: var(--kc); } #stTags[data-color="edge"] .sttag .nm small { color: var(--kc); font-weight: 700; }
 .stcoin { display: inline-block; width: 1em; height: 1em; border-radius: 50%; background: #f4c542; border: .14em solid #b8860b; box-sizing: border-box; flex: none; }
 .stlv { display: inline-flex; width: 1.5em; height: 1.5em; border-radius: 50%; border: .16em solid #7cc957; background: #fff; align-items: center; justify-content: center; font-weight: 700; font-size: .82em; box-sizing: border-box; flex: none; }
 #stCard { position: fixed; left: 10px; right: 10px; bottom: calc(14px + env(safe-area-inset-bottom)); z-index: 12; max-width: 400px; margin: 0 auto; background: #fffcf4; border: 2px solid #2b2140; border-radius: 18px; padding: 12px; display: flex; gap: 12px; align-items: center; box-shadow: 0 5px 0 rgba(43,33,64,.25); color: #2b2140; animation: stUp .22s cubic-bezier(.3,1.4,.5,1) both; }
@@ -164,7 +179,18 @@ export function create(A, { STORE }) {
     s.el = document.createElement('div'); s.el.className = 'sttag'; tagsEl.appendChild(s.el);
     s.el.addEventListener('click', () => openCard(s.kind, s.id));
   }
-  function refreshTags() { for (const s of SLOTS) { const it = info(s.kind, s.id); s.el.innerHTML = priceHTML(it); s.el.classList.toggle('own', !!it.own); } }
+  // Names on the shelf tags (Mac: "the items in the store should have a name and its use, like Barrel (decor)").
+  // TAG_NAMES: 'near' = the item you're standing at shows its name and kind over the price · 'all' = every tag shows its name,
+  // and the one you're at adds the kind · 'plate' = tags stay as they are and a name plate sits by the Buy button · '' = prices only.
+  const TAG_NAMES = 'near';   // Mac picked A (Nov 21)
+  const TAG_COLOR = 'edge';   // Mac picked 3: every tag outlined in its kind's colour (pink Decor, blue Tool)
+  const tagMode = () => (window.__tagLab != null ? window.__tagLab : TAG_NAMES);
+  const KIND = { decor: 'Decor', tool: 'Tool' };
+  const plate = document.createElement('div'); plate.id = 'stPlate'; plate.hidden = true; document.body.appendChild(plate);
+  function refreshTags() {
+    const m = tagMode(); tagsEl.dataset.names = m; if (!tagsEl.dataset.color) tagsEl.dataset.color = TAG_COLOR;
+    for (const s of SLOTS) { const it = info(s.kind, s.id); s.el.innerHTML = (m === 'near' || m === 'all' ? `<span class="nm">${it.name}<small>${KIND[s.kind] || ''}</small></span>` : '') + `<span class="pr">${priceHTML(it)}</span>`; s.el.classList.toggle('own', !!it.own); s.el.dataset.kind = s.kind; }
+  }
 
   // the buy card (walk-up and list both end here): picture, big price, − 1 +, Buy
   let card = null, cardFrom = null;
@@ -266,11 +292,14 @@ export function create(A, { STORE }) {
   const _p = new THREE.Vector3();
   function placeTags() {
     const w = innerWidth, h = innerHeight;
+    if (tagsEl.dataset.names !== tagMode()) refreshTags();
     for (const s of SLOTS) {
       _p.set(s.x, s.y + 0.5, s.z).project(cam);
       s.el.style.left = ((_p.x + 1) / 2 * w) + 'px'; s.el.style.top = ((1 - _p.y) / 2 * h) + 'px';
       s.el.classList.toggle('near', s === near);
+      if (s === near && tagMode() === 'plate') { const it = info(s.kind, s.id), html = `<div>${it.name}<small>${KIND[s.kind] || ''}</small></div>`; if (plate.dataset.h !== html) { plate.dataset.h = html; plate.innerHTML = html; } }
     }
+    plate.hidden = !(tagMode() === 'plate' && near && SLOTS.includes(near));
   }
 
   function enter() {
@@ -280,7 +309,7 @@ export function create(A, { STORE }) {
   }
   function exit() {
     closeCard(); closeList(); if (A.dlg.open) A.closeDialog();
-    me.on = false; tagsEl.hidden = true; A.setUse(null);
+    me.on = false; tagsEl.hidden = true; plate.hidden = true; A.setUse(null);
     A.scene.add(body.root); A.renderer.toneMappingExposure = A.exposure();
     A.anim.setTalk(body, false); body = null;
   }

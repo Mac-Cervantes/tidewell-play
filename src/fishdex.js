@@ -67,7 +67,8 @@ function chipsFor(f) {
 // ---------- drawing the book ----------
 const stars = (f) => { const n = RARITY_ORDER.indexOf(f.rarity) + 1, c = f.rarity === 'common' ? '#6b7280' : RARITY[f.rarity].color;
   return `<span class="fbstars" aria-label="${n} of 5 stars">${[0, 1, 2, 3, 4].map(i => `<svg width="15" height="15" viewBox="0 0 24 24" fill="${i < n ? c : '#fff'}" stroke="#2b2140" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.7 5.8 6.3.8-4.6 4.3 1.2 6.2L12 17l-5.6 3.1 1.2-6.2L3 9.6l6.3-.8z"/></svg>`).join('')}</span>`; };
-const pic = (id, got) => A.fishIcon[id] ? `<img src="${A.fishIcon[id]}" alt="" class="${got ? '' : 'sil'}" draggable="false">` : '<span class="q">?</span>';
+const picK = id => { const s = SIGHTS.find(q => q.id === id); return s && s.pic ? ` style="transform:scale(${s.pic})"` : ''; };
+const pic = (id, got) => A.fishIcon[id] ? `<img src="${A.fishIcon[id]}" alt="" class="${got ? '' : 'sil'}" draggable="false"${picK(id)}>` : '<span class="q">?</span>';
 function tile(id, got, n, color) {
   return `<button class="fbtile${got ? '' : ' no'}${sel === id ? ' on' : ''}" data-fish="${id}" style="border-color:${color}" aria-label="${got ? 'Caught' : 'Not caught yet'}">${pic(id, got)}<b>${got ? '&times;' + n : '?'}</b></button>`;
 }

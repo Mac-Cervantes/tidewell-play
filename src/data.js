@@ -1,7 +1,7 @@
 // Tidewell game data. Everything tunable lives here as plain tables so it can be
 // exported to JSON for the Unity version later (see tools/export-data.mjs).
 
-export const VERSION = '0.1.139';
+export const VERSION = '0.1.140';
 export const VERSION_LABEL = 'BETA v' + VERSION;
 
 // Rarity tiers (decision 36). `weight` is the base chance per bite with worms.
@@ -86,11 +86,11 @@ export const CAST = {
 export const SIGHTS = [
   // w: how often it's the one that shows, out of the total · len: metres · with: a second animal that swims beside it
   // tint/tintAll: recolour the model · proper: a name, so messages say "Moby Dick!" and not "A moby dick!"
-  { id: 'dolphin', name: 'Dolphin',    model: 'Dolphin', len: 2.4,  w: 80 },
-  { id: 'whale',   name: 'Whale',      model: 'Whale',   len: 9.5,  w: 20 },
-  // Mocked up for Mac (Nov 21), waiting for his go: a calf beside its mother, and the great white whale (about 1 sighting in 50).
-  // { id: 'calf',    name: 'Baby whale', model: 'Whale',   len: 4.4,  w: 8, with: 'whale' },
-  // { id: 'moby',    name: 'Moby Dick',  model: 'Whale',   len: 13.5, w: 2, tint: '#f7f4ec', tintAll: 0.86, proper: true },
+  { id: 'dolphin', name: 'Dolphin',    model: 'Dolphin', len: 2.4,  w: 76 },
+  { id: 'whale',   name: 'Whale',      model: 'Whale',   len: 9.5,  w: 14 },
+  // Mac's go, Nov 21: a calf beside its mother (8 in 100), and the great white whale (2 in 100). pic: how big its book picture is drawn.
+  { id: 'calf',    name: 'Baby whale', model: 'Whale',   len: 4.4,  w: 8, with: 'whale', pic: 0.62 },
+  { id: 'moby',    name: 'Moby Dick',  model: 'Whale',   len: 13.5, w: 2, tint: '#f7f4ec', tintAll: 0.86, proper: true },
 ];
 // Hints in the fish book (Mac: picture chips; the last two unlock). Where, when and season always show.
 // The bait hint opens at a town level by rarity; the rain hint after `rainTask` catches at that fish's place.
