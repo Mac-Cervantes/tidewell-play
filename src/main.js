@@ -515,7 +515,7 @@ function buildWorld() {
   place('pirate', 'palm-detailed-straight', 7.8, -3.6, { r: 0.3, s: 1.0 });
   // the bent palm at 10.5, -4.6 stood in the sea; removed (Mac, v0.1.78)
   place('pirate', 'rocks-sand-a', -8.0, -6.6, { s: 0.6, r: 1 });
-  place('pirate', 'rocks-sand-a', 8.5, -6.8, { s: 0.5, r: 2.5 });
+  // the sand rock in the sea right of the dock (8.5, -6.8) is gone (Mac, v0.1.139); the one on the left stays
 
   // --- the lot starts bare: everything man-made in town is decor you place yourself ---
   // Fishel's bait stall by the dock
@@ -2156,7 +2156,7 @@ function renderFishIcons() {
   for (const fish of [...FISH, ...SIGHTS]) {   // FISHING: + the sightings' pictures
     const g = M.fish[fish.model]; if (!g) continue;
     const o = SkeletonUtils.clone(g.scene);   // a plain clone would keep following the original skeleton
-    if (fish.tint) o.traverse(m => { if (m.isMesh) { m.material = m.material.clone(); const h = {}; m.material.color.getHSL(h); if (h.l > 0.25) m.material.color.lerp(new THREE.Color(fish.tint), 0.75); } });
+    if (fish.tint) o.traverse(m => { if (m.isMesh) { m.material = m.material.clone(); const h = {}; m.material.color.getHSL(h); if (fish.tintAll) m.material.color.lerp(new THREE.Color(fish.tint), fish.tintAll); else if (h.l > 0.25) m.material.color.lerp(new THREE.Color(fish.tint), 0.75); } });
     if (fish.model === 'Manta_ray') o.rotation.set(1.0, 0, 0.5); else o.rotation.set(Math.PI / 2, 0, Math.PI / 2);   // side-on (manta from above)
     sc.add(o);
     // skinned fish: pose the skeleton before measuring, or the bounds (and the camera) land in empty space
@@ -3651,14 +3651,18 @@ addEventListener('pagehide', persistNow);
 // A newer version is taken quietly at a safe moment: you just came back, or 20 s without a touch, and nothing is open.
 // It saves, reloads straight back into the game (no title screen), and never tries the same version twice in 10 minutes.
 const upd = { on: /github\.io$|^localhost$/.test(location.hostname), want: null, since: 0, touch: performance.now(), back: 0, busy: false };
-const updLab = () => Object.assign({ wait: 120, idle: 20, every: 300, show: 900 }, window.__updLab || {});   // seconds; tests shorten them
+const updLab = () => Object.assign({ wait: 120, idle: 20, every: 300, show: 900, fresh: 20 }, window.__updLab || {});   // seconds (show: ms); tests shorten them. fresh: how long after coming back still counts as "just came back"
 const verNum = (v) => String(v).split('.').map(n => parseInt(n, 10) || 0);
 const verNewer = (a, b) => { const x = verNum(a), y = verNum(b); for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); return false; };
 async function updCheck() {
   if (!upd.on || upd.busy) return; upd.busy = true;
   try {
     const r = await fetch('version.json?t=' + Date.now(), { cache: 'no-store' });
-    if (r.ok) { const v = (await r.json()).version; if (v && verNewer(v, VERSION) && upd.want !== v) { upd.want = v; upd.since = performance.now(); } }
+    if (r.ok) { const v = (await r.json()).version; if (v && verNewer(v, VERSION) && upd.want !== v) { upd.want = v; upd.since = performance.now(); }
+      // v0.1.138: found on coming back to the game, before any touch: take it right away. (Before, the two-minute settling wait
+      // started at that moment, so "just came back" was always over by the time it ended, and a game that was never left still
+      // for 20 s never updated at all: Mac's phone sat ten versions behind until he force-closed it.)
+      if (upd.want && upd.back && upd.touch < upd.back && performance.now() - upd.back < updLab().fresh * 1000) upd.since = -1e12; }
   } catch (e) { /* offline: try again later */ }
   upd.busy = false;
 }
@@ -3669,7 +3673,7 @@ function updTick() {
   if (!upd.want) return;
   const L = updLab(), now = performance.now();
   if (now - upd.since < L.wait * 1000) return;                     // give the new files a moment to reach every server
-  const fresh = upd.back && now - upd.back < 4000 && upd.touch < upd.back, idle = now - upd.touch > L.idle * 1000;
+  const fresh = upd.back && now - upd.back < L.fresh * 1000 && upd.touch < upd.back, idle = now - upd.touch > L.idle * 1000;
   if (!(fresh || idle) || !updSafe()) return;
   let tried = null; try { tried = JSON.parse(sessionStorage.getItem('tidewell.updTried') || 'null'); } catch (e) { /* none */ }
   if (tried && tried.v === upd.want && Date.now() - tried.at < 600000) return;   // that reload didn't bring it: don't loop
@@ -3685,7 +3689,8 @@ function updTick() {
 }
 if (upd.on) {
   addEventListener('pointerdown', () => { upd.touch = performance.now(); }, true);
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) { upd.back = performance.now(); updCheck(); } });
+  const cameBack = () => { if (document.hidden || performance.now() - upd.back < 1500) return; upd.back = performance.now(); updCheck(); };
+  document.addEventListener('visibilitychange', cameBack); addEventListener('pageshow', cameBack); addEventListener('focus', cameBack);   // a home-screen app doesn't always send all three
   setTimeout(updCheck, 20000);
   setInterval(updCheck, updLab().every * 1000);
   setInterval(updTick, 1000);

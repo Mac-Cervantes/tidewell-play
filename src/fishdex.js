@@ -126,30 +126,38 @@ export function record(fish, size) {
 
 // ---------- sightings ----------
 let sight = null, nextSight = 90;
-function spawnSight(force) {
-  const P = A.player.pos;
-  const s = force ? SIGHTS.find(q => q.id === force) : (Math.random() < SIGHTS[1].chance ? SIGHTS[1] : SIGHTS[0]);
-  const g = A.M.fish[s.model]; if (!g) { A.ensureFish(); return false; }
+// one animal of a sighting, sized (and recoloured) as the table says
+function sightBody(s) {
   const o = A.cloneFish(s.model);
-  // Measure the animal as it is really drawn (with its bones), not its raw mesh. The raw mesh of these two is about 100
+  // Measure the animal as it is really drawn (with its bones), not its raw mesh. The raw mesh of these is about 100
   // times bigger than what the bones draw, so they came out 4 cm long: there, counted, and impossible to see. (Mac, v0.1.93)
   o.updateMatrixWorld(true);
   const box = new THREE.Box3().setFromObject(o, true), len = Math.max(box.max.x - box.min.x, box.max.y - box.min.y, box.max.z - box.min.z);
   o.scale.multiplyScalar(s.len / len);
-  o.traverse(m => { if (m.isMesh) { m.frustumCulled = false; m.castShadow = true; } });
+  o.traverse(m => { if (m.isMesh) { m.frustumCulled = false; m.castShadow = true; if (s.tint && s.tintAll) { m.material = m.material.clone(); m.material.color.lerp(new THREE.Color(s.tint), s.tintAll); } } });
+  const h = new THREE.Group(); h.add(o); A.scene.add(h); return h;
+}
+function pickSight() { let r = Math.random() * SIGHTS.reduce((n, s) => n + s.w, 0); for (const s of SIGHTS) { r -= s.w; if (r < 0) return s; } return SIGHTS[0]; }
+function spawnSight(force, at) {
+  const P = A.player.pos;
+  const s = force ? SIGHTS.find(q => q.id === force) : pickSight();
+  const g = A.M.fish[s.model]; if (!g) { A.ensureFish(); return false; }
   // pick a spot on the water in the open middle of your screen (below the panels at the top, above the toolbar), not too far
   // off to be seen, and clear of the dock and the ship. No good spot right now: don't show it at all, try again shortly.
   // (It used to fall back to a spot off screen or behind the panels, and far ones faded into the haze. Mac, v0.1.93)
   let x = 0, z = 0, ok = false;
   for (let i = 0; i < 14 && !ok; i++) {
     const w = A.waterAt((Math.random() * 2 - 1) * 0.5, -0.1 + Math.random() * 0.5);
-    if (!w || w.z > -6.5 || Math.hypot(w.x - P.x, w.z - P.z) > 24 || (w.x > -4 && w.x < 9 && w.z > -22)) continue;
+    if (!w || w.z > -6.5 || Math.hypot(w.x - P.x, w.z - P.z) > 24 || (w.x > -6.5 && w.x < 6.5 && w.z > -22)) continue;   // the dock and ship are in the middle since v0.1.133
     x = w.x; z = w.z; ok = true;
   }
+  if (at) { x = at[0]; z = at[1]; ok = true; }   // tests and pictures: right there
   if (!ok) return false;
-  const holder = new THREE.Group(); holder.add(o); A.scene.add(holder);
-  const dirX = Math.random() < 0.5 ? 1 : -1, whale = s.id === 'whale';
-  sight = { s, holder, t: 0, dur: whale ? 5.5 : 2.2, x: x - dirX * (whale ? 1.5 : 2.25), z, dirX, whale, counted: false };   // the middle of its path is the spot picked
+  const dirX = Math.random() < 0.5 ? 1 : -1, whale = s.model === 'Whale', k = whale ? s.len / 9.5 : 1;   // k: how big next to the plain whale; its rise and its swim scale with it
+  // the animals in this sighting: the one it's named for, and (a calf) its mother a little behind and further out
+  const mates = [{ h: sightBody(s), k, dx: 0, dz: 0, lag: 0 }];
+  if (s.with) { const m = SIGHTS.find(q => q.id === s.with); mates.push({ h: sightBody(m), k: m.len / 9.5, dx: -dirX * 2.6, dz: -2.4, lag: 0.08 }); }
+  sight = { s, mates, holder: mates[0].h, t: 0, dur: whale ? 5.5 + (k > 1 ? 1.5 : 0) : 2.2, x: x - dirX * (whale ? 1.5 : 2.25), z, dirX, whale, counted: false };   // the middle of its path is the spot picked
   A.addSplash(x, z);
   return true;
 }
@@ -161,25 +169,30 @@ function tickSight(dt) {
     if (nextSight <= 0) { nextSight = spawnSight() ? (A.debug() ? 30 : 240 + Math.random() * 240) : 20; }
     return;
   }
-  const q = sight; q.t += dt; const u = Math.min(1, q.t / q.dur), h = q.holder;
-  if (q.whale) { h.position.set(q.x + q.dirX * u * 3, A.WATER_Y - 1.5 + Math.sin(Math.PI * u) * 1.55, q.z); h.rotation.set(0, q.dirX > 0 ? Math.PI / 2 : -Math.PI / 2, 0); h.rotateX(-Math.cos(Math.PI * u) * 0.25); }
-  else { h.position.set(q.x + q.dirX * u * 4.5, A.WATER_Y - 0.3 + Math.sin(Math.PI * u) * 2.1, q.z); h.rotation.set(0, q.dirX > 0 ? Math.PI / 2 : -Math.PI / 2, 0); h.rotateX(-Math.cos(Math.PI * u) * 1.0); }
+  const q = sight; q.t += dt; if (window.__sightHold != null) q.t = q.dur * window.__sightHold;   // pictures: hold it mid-rise
+  const u = Math.min(1, q.t / q.dur), h = q.holder;
+  for (const m of q.mates) {
+    const um = Math.max(0, Math.min(1, u - m.lag)), mh = m.h;
+    if (q.whale) { mh.position.set(q.x + m.dx + q.dirX * um * 3 * Math.max(0.7, m.k), A.WATER_Y + (-1.5 + Math.sin(Math.PI * um) * 1.55) * m.k, q.z + m.dz); mh.rotation.set(0, q.dirX > 0 ? Math.PI / 2 : -Math.PI / 2, 0); mh.rotateX(-Math.cos(Math.PI * um) * 0.25); }
+    else { mh.position.set(q.x + q.dirX * um * 4.5, A.WATER_Y - 0.3 + Math.sin(Math.PI * um) * 2.1, q.z); mh.rotation.set(0, q.dirX > 0 ? Math.PI / 2 : -Math.PI / 2, 0); mh.rotateX(-Math.cos(Math.PI * um) * 1.0); }
+  }
   if (!q.counted && u > 0.5) {
     q.counted = true;
     const v = A.project(h.position.x, h.position.y, h.position.z);
     if (v.z < 1 && v.x > innerWidth * 0.06 && v.x < innerWidth * 0.94 && v.y > innerHeight * 0.16 && v.y < innerHeight * 0.72 && !A.busy()) {   // it only counts if you could really see it: in the open part of the screen, with no menu up
       const S = A.S; S.seen = S.seen || {}; S.seen[q.s.id] = (S.seen[q.s.id] || 0) + 1;
-      const first = S.seen[q.s.id] === 1;
+      const first = S.seen[q.s.id] === 1, name = q.s.proper ? q.s.name : 'a ' + q.s.name.toLowerCase();
       if (first) A.addXP(XP.newFish);
-      A.audio.play(first ? 'catch' : 'splash'); A.commit();
-      A.toast(first ? `You spotted a ${q.s.name.toLowerCase()}! It's in your fish book.` : `A ${q.s.name.toLowerCase()}!`);
+      A.audio.play(first || q.s.proper ? 'catch' : 'splash'); A.commit();
+      A.toast(first ? `You spotted ${name}! It's in your fish book.` : `${name[0].toUpperCase()}${name.slice(1)}!`);
     }
   }
-  if (u >= 1) { A.addSplash(h.position.x, h.position.z); A.scene.remove(h); sight = null; }
+  if (u >= 1) { for (const m of q.mates) { A.addSplash(m.h.position.x, m.h.position.z); A.scene.remove(m.h); } sight = null; }
 }
 export function frame(dt) { if (A) tickSight(dt); }
-export const debugSight = (id) => { if (sight) return false; return spawnSight(id || 'dolphin'); };   // tests and the debug panel
+export const debugSight = (id, at) => { if (sight) return false; return spawnSight(id || 'dolphin', at); };   // tests and the debug panel
 export const sighting = () => !!sight;
+export const sightU = () => sight ? sight.t / sight.dur : -1;   // tests and mockups
 
 export function init(api) {
   A = api; THREE = api.THREE;
