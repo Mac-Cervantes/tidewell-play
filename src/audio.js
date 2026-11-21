@@ -629,6 +629,7 @@ function rebuild() {
 function unlock() {                                  // runs on every tap; cheap after the first
   if (ctx && !document.hidden && (stale || (stuckSince && Date.now() - stuckSince > 1500))) rebuild();
   if (!init()) return;
+  if (hushed && !document.hidden) unhush();   // a tap after coming back: make sure the fade-out from leaving is undone
   if (ctx.state !== 'running' && !document.hidden) { if (!stuckSince) stuckSince = Date.now(); ctx.resume().catch(function () {}); }
   else if (ctx.state === 'running') stuckSince = 0;
   if (!G.started) { G.started = true; startAmbience(); tickId = setInterval(tick, 120); }
@@ -636,10 +637,26 @@ function unlock() {                                  // runs on every tap; cheap
 ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown'].forEach(function (ev) { window.addEventListener(ev, unlock, { capture: true, passive: true }); });
 document.addEventListener('visibilitychange', function () {
   if (!ctx) return;
-  if (document.hidden) { hiddenAt = Date.now(); ctx.suspend().catch(function () {}); return; }
+  if (document.hidden) { hiddenAt = Date.now(); hush(); return; }
   if (hiddenAt && Date.now() - hiddenAt > 30000) stale = true;
-  if (G.started && !stale) ctx.resume().catch(function () {});
+  clearTimeout(hushT);
+  if (G.started && !stale) { ctx.resume().catch(function () {}); unhush(); }
 });
+// v0.1.137 (Mac: "when I close the game it makes a beep sound"): pausing the sound in the middle of a note cut it off with a
+// blip. Leaving the game now fades everything out over a few hundredths of a second first, then pauses; coming back fades it in.
+var hushT = 0, hushed = false;
+function hush() {
+  if (!ctx || !master) return;
+  hushed = true;
+  try { var t = ctx.currentTime; master.gain.cancelScheduledValues(t); master.gain.setTargetAtTime(0, t, 0.012); } catch (e) { /* closed */ }
+  clearTimeout(hushT); hushT = setTimeout(function () { if (ctx && document.hidden) ctx.suspend().catch(function () {}); }, 90);
+}
+function unhush() {
+  if (!ctx || !master) return;
+  hushed = false;
+  try { var t = ctx.currentTime; master.gain.cancelScheduledValues(t); master.gain.setTargetAtTime(vol.muted ? 0 : 1, t, 0.05); } catch (e) { /* closed */ }
+}
+window.addEventListener('pagehide', hush);
 window.addEventListener('pageshow', function (e) { if (ctx && e.persisted) stale = true; });
 
 // buttons tick, pop-ups blip: wired here so main.js needs no hook for them
@@ -653,7 +670,7 @@ document.querySelectorAll('.sheet').forEach(function (el) { sheetWatch.observe(e
 function frame(x, z, moving, onDock, tod, stepPhase) {
   G.tod = tod;
   var d = Math.hypot(x - G.px, z - G.pz); G.px = x; G.pz = z;
-  var dx = Math.max(0, Math.abs(x - 2.4) - 0.97), dz = Math.max(0, z + 3.2);
+  var dx = Math.max(0, Math.abs(x - 0) - 0.97), dz = Math.max(0, z + 3.2);   // the dock is in the middle since v0.1.133
   G.dockD = onDock ? 0 : Math.hypot(dx, dz);
   if (!ctx || ctx.state !== 'running') return;
   var now = ctx.currentTime;
@@ -698,6 +715,7 @@ function bindSettings(settings, store) {
 
 export const audio = {
   play: play,
+  _state: function () { return { gain: master ? +master.gain.value.toFixed(3) : null, ctx: ctx ? ctx.state : null, hushed: hushed }; },   // for tests
   hit: function (tool) { play(HIT[tool] || 'plant'); },            // one hit while clearing; bare hands get a soft pat
   shipBell: function () { play('shipBell', shipLevel()); },        // quieter the farther you are from the dock
   frame: frame,
