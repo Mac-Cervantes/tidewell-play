@@ -1758,6 +1758,7 @@ function farmOpen() {
 function farmOff() {
   if (farm.mode === 'off') return;
   farm.mode = farm.lift > 0.01 ? 'land' : 'off'; farm.t = 0;
+  farm.landTo = farm.mode === 'land' ? landSpot(player.pos.x, player.pos.z) : null;   // come down on the nearest clear ground
   renderFarmTray(); showFarmTool();
 }
 // where the hands hang from while floating at home
@@ -1782,7 +1783,46 @@ function fingerToWorld(x, y) {
   if (d > R) { P.x = player.pos.x + dx / d * R; P.z = player.pos.z + dz / d * R; }
   return { P, G: g ? g.point : null };
 }
+// FARM SCROLL (v0.1.134; Mac: "we need to make the camera move when harvesting", picked scrolling at the screen's edge). While you
+// drag a farm tool, holding your finger near an edge of the screen slides the view that way, so one float can cover the whole
+// lot. It works by moving the spot you float from (player.pos, which the camera follows), kept inside your land.
+const FARM_Z0 = -1.5, FARM_SCROLL = { side: 0.16, top: 0.25, bottom: 0.25, speed: 6, fence: 0.66 };   // bands as shares of the screen; metres per second at the very edge
+// How far toward the back fence the float spot may go: only until the fence sits low on the screen (FARM_SCROLL.fence, a share
+// of the screen's height), so scrolling never shows much of the wilds or lots you haven't bought (Mac, v0.1.135: "to avoid spoilers").
+const _fzm = new THREE.Vector3();
+function farmZMax() {
+  tapNdc.set(0, -(FARM_SCROLL.fence * 2 - 1)); tapRay.setFromCamera(tapNdc, camera);
+  farmPlane.constant = 0; if (!tapRay.ray.intersectPlane(farmPlane, _fzm)) return FENCE_Z - 0.7;
+  const line = _fzm.z + (player.pos.z - camFocus.z);   // the ground at that line of the screen, once the view catches up with you
+  return Math.min(FENCE_Z - 0.7, player.pos.z + Math.max(0, FENCE_Z - line));
+}
+function farmEdgeScroll(dt) {
+  if (farm.mode !== 'drag' || farm.fx == null) return;
+  const W = innerWidth, H = innerHeight, C = FARM_SCROLL, band = (d, size) => { const t = Math.max(0, Math.min(1, 1 - d / size)); return t * t; };
+  const sx = band(W - farm.fx, W * C.side) - band(farm.fx, W * C.side), sz = band(H - farm.fy, H * C.bottom) - band(farm.fy, H * C.top);   // screen down = toward the lots (+z)
+  if (sx || sz) {
+    player.pos.x = Math.max(landMinX() + 0.6, Math.min(landMaxX() - 0.6, player.pos.x + sx * C.speed * dt));
+    player.pos.z = Math.max(FARM_Z0, Math.min(Math.max(player.pos.z, farmZMax()), player.pos.z + sz * C.speed * dt));
+  }
+  // the view may still be sliding under a finger that's holding still: keep working what's under it
+  const w = fingerToWorld(farm.fx, farm.fy); if (w) { farm.target = w.P; farmWork(w.G); }
+}
+// can you stand here? (not in water, a shop, the coop, a stall, the board or a person)
+function landable(x, z) {
+  if (!walkable(x, z) || z > FENCE_Z - 0.45 || z < -3.3) return false;
+  if (Math.abs(x - FISHEL_STALL.x) < 1.35 && Math.abs(z - FISHEL_STALL.z) < 1.1) return false;
+  if (Math.abs(x - BOARD.x) < 0.9 && Math.abs(z - BOARD.z) < 0.45) return false;
+  if (rosa) { const c = Math.cos(ROSA_CART.r), sn = Math.sin(ROSA_CART.r), dx = x - ROSA_CART.x, dz = z - ROSA_CART.z; if (Math.abs(dx * c - dz * sn) < 1.05 && Math.abs(dx * sn + dz * c) < 1.55) return false; }
+  for (const n of [higgins, fishel, pike, rosa]) if (n && Math.hypot(x - n.pos.x, z - n.pos.z) < 0.7) return false;
+  const np = new THREE.Vector3(x, 0, z), far = new THREE.Vector3(x, 0, z + 99); store.block(np, far); animals.block(np, far);
+  return np.x === x && np.z === z;
+}
+function landSpot(x, z) {
+  for (let r = 0; r <= 5; r += 0.4) for (let i = 0, n = r ? 12 : 1; i < n; i++) { const a = i / n * Math.PI * 2, px = x + Math.cos(a) * r, pz = z + Math.sin(a) * r; if (landable(px, pz)) return new THREE.Vector3(px, 0, pz); }
+  return null;
+}
 function farmGrab(x, y) {
+  farm.fx = x; farm.fy = y;
   const w = fingerToWorld(x, y); if (!w) return;
   farm.mode = 'drag'; farm.t = 0; farm.done.clear(); farm.got = 0; farm.n = 0; farm.lastG = null;
   renderFarmTray();   // the tray tucks away while you drag
@@ -1790,12 +1830,15 @@ function farmGrab(x, y) {
 }
 function farmDrag(x, y) {
   if (farm.mode !== 'drag') return;
+  farm.fx = x; farm.fy = y;
   const w = fingerToWorld(x, y); if (!w) return;
   farm.target = w.P; farmWork(w.G);
 }
 function farmLetGo() {
   if (farm.mode !== 'drag') return;
   farm.mode = 'return'; farm.t = 0; farm.from.copy(farm.P);
+  // v0.1.134 (Mac): you stay floating where you stopped, not back where you started; the view settles on you there
+  player.pos.x = Math.max(landMinX() + 0.6, Math.min(landMaxX() - 0.6, farm.P.x)); player.pos.z = Math.max(FARM_Z0, Math.min(Math.max(player.pos.z, farmZMax()), farm.P.z));
   farm.retDur = Math.min(1.4, Math.max(0.5, farm.from.distanceTo(homeHands(new THREE.Vector3())) / 3.5));
   showFarmTool();
   const k = farmSel();
@@ -1933,13 +1976,20 @@ function stepDangle(dt) {
   }
 }
 const _fq = new THREE.Quaternion(), _fu = new THREE.Vector3(), _fy = new THREE.Quaternion();
+const FARM_ARM_BONES = ['UpperArm.L', 'LowerArm.L', 'UpperArm.R', 'LowerArm.R'];
 // runs after the animation mixer each frame: float, then (holding a tool) hang from the hands
 function applyFarmPose(dt) {
   const b = body; if (!b) return;
   farm.t += dt;
   const floating = farm.mode !== 'off' && farm.mode !== 'land';
+  farmEdgeScroll(dt);
+  if (farm.mode === 'land' && farm.landTo) { const k = Math.min(1, dt * 8); player.pos.x += (farm.landTo.x - player.pos.x) * k; player.pos.z += (farm.landTo.z - player.pos.z) * k; }
   farm.lift += ((floating ? FLOAT : 0) - farm.lift) * Math.min(1, dt * (floating ? 5 : 7));
-  if (farm.mode === 'land' && farm.lift < 0.01) { farm.lift = 0; farm.mode = 'off'; if (tool === 'farm') selectTool('none', true); }
+  if (farm.mode === 'land' && farm.lift < 0.01) { farm.lift = 0; farm.mode = 'off'; if (farm.landTo) { player.pos.x = farm.landTo.x; player.pos.z = farm.landTo.z; farm.landTo = null; } if (tool === 'farm') selectTool('none', true); }
+  // v0.1.136 (Mac: "the player's right arm stays up after releasing a tool"): nothing else poses the forearms while you stand, so
+  // the hanging pose left the right one bent up. The arms are remembered before you float and eased back as you land.
+  if (floating && !farm.armRest) farm.armRest = FARM_ARM_BONES.map(n => [b.bones[n], b.bones[n].quaternion.clone()]);
+  if (!floating && farm.armRest) { const k = farm.mode === 'off' ? 1 : Math.min(1, dt * 9); for (const [bone, q] of farm.armRest) bone.quaternion.slerp(q, k); if (farm.mode === 'off') { farm.armRest = null; farm.upright = 0; } }
   if (farm.mode === 'off' && farm.lift <= 0) return;
   const bob = farm.mode === 'drag' ? 0 : Math.sin(elapsed * 4.2) * 0.04 * Math.min(1, farm.lift / FLOAT);
   const hanging = farm.mode === 'ready' || farm.mode === 'drag' || farm.mode === 'return';
