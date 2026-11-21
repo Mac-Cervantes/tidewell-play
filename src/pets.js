@@ -10,6 +10,7 @@
 // Both: tap the pet for picture buttons (pet, treat, name) and tap its name tag for a small card; beds are placed
 // like decor; asleep in bed at night.
 // Hooks in main.js are marked PETS (import, tap, frame, pickUse, init, start, the bite wait, petSolid).
+import { rerigFrontLegs, frontLegs, walkFrontLegs } from './catlegs.js';
 import { ITEMS, DECOR, STORE, PETS } from './data.js';
 export { PETS };   // the numbers live in data.js since v0.1.68
 
@@ -179,11 +180,12 @@ function buildRig(k) {
   s.updateMatrixWorld(true);
   const box = new THREE.Box3().setFromObject(s, true), sz = box.getSize(new THREE.Vector3()), c = box.getCenter(new THREE.Vector3());
   s.position.set(-c.x, -box.min.y, -c.z); w.add(s); w.scale.setScalar((k === 'cat' && catLab().length || K[k].length) / Math.max(sz.x, sz.z));
+  const legs = k === 'cat' && !catLab().oldLegs && rerigFrontLegs(THREE, s) ? frontLegs(THREE, s) : null;   // the elbows move up to the ribs
   const mx = new THREE.AnimationMixer(s), acts = {};
   for (const a of src.animations) acts[a.name.split('|').pop()] = mx.clipAction(a);
   let blob = null;
   if (k === 'cat') { blob = buildBlob(); blob.material.opacity = 0.3; const u = 1 / w.scale.x, big = K.cat.length / 0.7; blob.scale.set(0.62 * u * big, 1.05 * u * big, 1); blob.position.y = 0.025 * u; blob.renderOrder = 1; w.add(blob); }   // soft dark patch right under the cat, so it reads as sitting on the grass (the sun's shadow alone lands a little away from it)
-  return (rigs[k] = { w, s, blob, baseY: s.position.y, mx, acts, cur: '' });
+  return (rigs[k] = { w, s, blob, baseY: s.position.y, mx, acts, cur: '', legs });
 }
 const buildDog = () => buildRig('dog');
 // blend to a clip; the puppy's 'Death' is borrowed as its lying-down pose (no sleep clip in the pack): it starts near its end and holds there
@@ -196,6 +198,8 @@ function anim(k, want, dt, speed = 1) {
     a.fadeIn(0.22).play(); if (d.cur) d.acts[d.cur].fadeOut(0.22); d.cur = name;
   }
   d.acts[name].timeScale = speed; d.mx.update(dt);
+  // v0.1.127 (Mac: "we need to do a cat model rebuild because the elbow is too low"): the cat's front legs are walked in code (catlegs.js)
+  if (k === 'cat' && name === 'Walking' && d.legs) { const a = d.acts[name]; walkFrontLegs(THREE, d.legs, (a.time / a.getClip().duration) % 1, a.getEffectiveWeight()); }
 }
 const dogAnim = (name, dt, speed) => anim('dog', name, dt, speed);
 // ---------- the cat loaf (v0.1.74, from Mac's photo): what the cat does when it's been still for a while ----------
