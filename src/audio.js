@@ -200,6 +200,17 @@ var S = {
     tone({ t: t, f: 420, to: 240, dur: 0.09, v: 0.18 });
     noise({ t: t + 0.05, dur: 0.07, a: 0.01, v: 0.07, ft: 'lowpass', f: 800 });
   },
+  // a big plant pops (Mac: "a tree hacking sound"): a low woody thunk, no bright hiss (decision 93)
+  chop: function (t) {
+    tone({ t: t, f: 190, to: 85, dur: 0.16, v: 0.3 });
+    tone({ t: t, f: 320, to: 150, dur: 0.07, v: 0.12, type: 'triangle' });
+    noise({ t: t, dur: 0.14, a: 0.01, v: 0.14, ft: 'lowpass', f: 700, fto: 260 });
+  },
+  // one food landing in the basket: the next note of an arpeggio (k = which one)
+  foodNote: function (t, k) {
+    var steps = [0, 4, 7, 12, 16, 19, 24, 28], f = 523.25 * Math.pow(2, steps[(k || 0) % steps.length] / 12);
+    bell(f, t, 0.1, 0.42);
+  },
   harvest: function (t) {
     tone({ t: t, f: 440, to: 980, dur: 0.09, v: 0.18 });
     tone({ t: t + 0.08, f: 1319, dur: 0.16, v: 0.07, type: 'triangle' });
@@ -271,9 +282,9 @@ var lastPlayed = {};
 function play(name, level) {                       // level (0..1) is optional: quieter when far away
   if (!ctx || ctx.state !== 'running' || !S[name]) return;
   var now = ctx.currentTime;
-  if (now - (lastPlayed[name] || -1) < 0.07) return;   // dragging a tool across ten plots is not ten sounds at once
+  if (name !== 'foodNote' && now - (lastPlayed[name] || -1) < 0.07) return;   // dragging a tool across ten plots is not ten sounds at once
   lastPlayed[name] = now;
-  var k = null; if (name === 'reelzip') { k = level; level = null; }   // for the reel zip the number is how full the bar is (its pitch), not a loudness
+  var k = null; if (name === 'reelzip' || name === 'foodNote') { k = level; level = null; }   // for the reel zip the number is how full the bar is (its pitch), not a loudness
   if (level != null && level < 1) {
     var b = { in: mkGain(level, sfx.in), wet: mkGain(level, sfx.wet) }; cur = b;
     setTimeout(function () { b.in.disconnect(); b.wet.disconnect(); }, 7000);

@@ -33,6 +33,34 @@ function hatParts(kind) {
   return P;
 }
 
+// ---------- the backpack (v0.1.150, Mac): made from shapes; worn on the back and also drawn as the Backpack button's picture ----------
+// More pack models can be added to PACKS later (Mac: "we will need more models"). Each returns [geometry, tone, x, y, z, rotX, rotZ] in pack units:
+// x right, y up from the pack's base, z out from the wearer's back. Tones: 'main' the pack's colour, 'dark' a shade of it, or a fixed '#colour'.
+export const PACKS = { day: 'Backpack' };
+const CREAM = '#fff1cf', LEATHER = '#8a5a34', GOLD = '#f2c14e';
+function packParts(kind) {
+  const W = 0.92, D = 0.44, H = 0.62, R = W / 2, P = [];
+  if (kind !== 'day') return P;
+  P.push([new THREE.BoxGeometry(W, H, D), 'main', 0, H / 2 + 0.06, 0]);                                   // body
+  P.push([new THREE.CylinderGeometry(R, R, D, 12), 'main', 0, H + 0.06, 0, Math.PI / 2]);                  // arched top
+  P.push([new THREE.BoxGeometry(W + 0.04, 0.08, D + 0.04), LEATHER, 0, 0.04, 0]);                          // base
+  P.push([new THREE.CylinderGeometry(R + 0.02, R + 0.02, 0.08, 12), 'dark', 0, H + 0.06, D / 2 + 0.02, Math.PI / 2]);   // round flap
+  P.push([new THREE.BoxGeometry(0.11, 0.5, 0.05), LEATHER, 0, H - 0.1, D / 2 + 0.08]);                     // strap
+  P.push([new THREE.BoxGeometry(0.17, 0.11, 0.07), GOLD, 0, H - 0.3, D / 2 + 0.09]);                       // buckle
+  P.push([new THREE.BoxGeometry(0.56, 0.22, 0.14), 'dark', 0, 0.2, D / 2 + 0.06]);                         // front pocket
+  P.push([new THREE.BoxGeometry(0.58, 0.06, 0.16), CREAM, 0, 0.3, D / 2 + 0.06]);
+  for (const sx of [-1, 1]) P.push([new THREE.BoxGeometry(0.1, 0.34, 0.3), 'dark', sx * (W / 2 + 0.04), 0.27, 0]);   // side pockets
+  P.push([new THREE.CylinderGeometry(0.15, 0.15, W + 0.16, 8), CREAM, 0, -0.13, 0, 0, Math.PI / 2]);       // bedroll underneath (Mac)
+  for (const sx of [-1, 1]) P.push([new THREE.TorusGeometry(0.16, 0.03, 5, 8), LEATHER, sx * 0.26, -0.13, 0, 0, 0, Math.PI / 2]);
+  return P;
+}
+const toneColor = (tone, main, trim) => tone === 'trim' ? (trim || main) : tone === 'dark' ? '#' + new THREE.Color(main).multiplyScalar(0.8).getHexString() : tone[0] === '#' ? tone : main;
+// a free-standing pack, for the button's picture
+export function packModel(kind, color) {
+  const g = new THREE.Group();
+  for (const [geo, tone, x, y, z, rx = 0, rz = 0, ry = 0] of packParts(kind)) { const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: toneColor(tone, color), roughness: 0.8, flatShading: true })); m.position.set(x, y, z); m.rotation.set(rx, ry, rz); g.add(m); }
+  return g;
+}
 const cache = {};
 function posed(dummyScene, idleClip, cloneFn) {
   if (!cache.dummy) { const k = cloneFn(dummyScene), mx = new THREE.AnimationMixer(k); mx.clipAction(idleClip).play(); mx.update(0); k.updateMatrixWorld(true); cache.dummy = k; }
@@ -63,9 +91,18 @@ function template(piece, k) {
     const geo = new THREE.IcosahedronGeometry(1, 1); geo.scale(s.x * 0.44, s.y * 0.17, s.z * 0.34); geo.rotateX(-0.45);
     add(geo, 'main').position.set(c.x, hb.min.y - s.y * 0.04, hb.min.z + s.z * 0.12);
   }
+  if (type === 'pack') {
+    boneName = 'UpperChest';
+    // on the back between the shoulders (the dummy's back is -z)
+    // sized and placed from the head (the chest bones own too few points to measure): a bit over half a head wide, its top just under the neck,
+    // its back face against the shirt
+    const hb = headBox(k), c = hb.getCenter(new THREE.Vector3()), hs = hb.getSize(new THREE.Vector3());
+    const K = hs.x * 0.66 / 0.92, y0 = hb.min.y - 1.2 * K, z0 = hb.min.z - 0.06 * K;
+    for (const [geo, tone, x, y, z, rx = 0, rz = 0, ry = 0] of packParts(kind)) { const m = add(geo, tone); m.position.set(c.x - x * K, y0 + y * K, z0 - z * K); m.rotation.set(-rx, Math.PI + ry, rz); m.scale.setScalar(K); }
+  }
   g.updateMatrixWorld(true);
   const bone = k.getObjectByName(boneName), inv = new THREE.Matrix4().copy(bone.matrixWorld).invert();
-  for (const tone of ['main', 'trim']) {   // one geometry per color, in bone space
+  for (const tone of [...new Set(g.children.map(m => m.userData.tone))]) {   // one geometry per color, in bone space
     const pts = [], v = new THREE.Vector3();
     for (const m of g.children) if (m.userData.tone === tone) {
       const geo = m.geometry.index ? m.geometry.toNonIndexed() : m.geometry, p = geo.attributes.position;
@@ -87,6 +124,7 @@ export function wearList(look) {
   else if (look.bottom === 'skirt' && !bib) L.push({ piece: 'skirt:short', main: look.bottomColor || '#2a4e8a' });
   // the hood is a 3D piece with short hair and only painted with long hair, which would pass through it (Mac)
   if ((top === 'hoodie' || top === 'raincoat') && !LONG_HAIR.includes(look.hair)) L.push({ piece: 'hood:down', main: look.topColor });
+  if (PACKS[look.pack]) L.push({ piece: 'pack:' + look.pack, main: look.packColor || '#f2a531' });
   return L;
 }
 // how much of a 3D hairstyle a hat cuts away (0 = no hat): hair above the hat line goes, so tails, fringes and long hair still show (Mac: "Tuck")
@@ -98,7 +136,7 @@ export function hairUnderHat(look) {
 export function wearFor(item, dummyScene, idleClip, cloneFn) {
   const t = template(item.piece, posed(dummyScene, idleClip, cloneFn)), group = new THREE.Group();
   for (const { geo, tone } of t.parts) {
-    const mat = new THREE.MeshStandardMaterial({ color: tone === 'trim' ? item.trim || item.main : item.main, roughness: 0.85, flatShading: true, side: THREE.DoubleSide });
+    const mat = new THREE.MeshStandardMaterial({ color: toneColor(tone, item.main, item.trim), roughness: 0.85, flatShading: true, side: THREE.DoubleSide });
     const m = new THREE.Mesh(geo, mat); m.castShadow = true; m.frustumCulled = false; m.userData.hair = true; group.add(m);
   }
   return { boneName: t.boneName, group };

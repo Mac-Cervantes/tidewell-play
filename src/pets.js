@@ -227,11 +227,18 @@ function catPose(rig, k) {
   rig.s.scale.set(1 + (L.squash[0] - 1) * k, 1 + (L.squash[1] - 1) * k, 1);   // the model's own x is its nose-to-tail line
   rig.w.rotation.x = L.pitch * k;
   if (rig.blob) rig.blob.rotation.x = -Math.PI / 2 - L.pitch * k;
-  if (k <= 0.001) return;
+  if (k <= 0.001) { if (rig.neck) for (const n in rig.neck) { const m = rig.neck[n]; if (m.on && b[n].quaternion.equals(m.made)) b[n].quaternion.copy(m.base); m.on = false; } return; }
   if (b.Bone002 && b.Bone003) {   // sphinx neck: chest bone tips up, head tips back down to level (the walk/idle clip resets these every frame)
-    rig.e = rig.e || new THREE.Euler();
-    rig.e.set(L.neck * k, 0, 0); b.Bone002.quaternion.multiply(rig.q.setFromEuler(rig.e));
-    rig.e.set(L.head * k, 0, 0); b.Bone003.quaternion.multiply(rig.q.setFromEuler(rig.e));
+    rig.e = rig.e || new THREE.Euler(); rig.neck = rig.neck || {};
+    // v0.1.145 (Mac: "the cat's head is spazzing out"): this turn is added on top of what the clip wrote this frame. But the mixer only
+    // writes a bone when its value changed, so on a frame where the clip stands still (the game paused while decorating, a held pose)
+    // nothing was written and the turn was added again and again. Now each bone remembers the clip's value and what we made of it:
+    // if the bone still holds our own result, start again from the clip's value.
+    for (const [n, ang] of [['Bone002', L.neck], ['Bone003', L.head]]) {
+      const bone = b[n], m = rig.neck[n] || (rig.neck[n] = { base: new THREE.Quaternion(), made: new THREE.Quaternion(), on: false });
+      if (m.on && bone.quaternion.equals(m.made)) bone.quaternion.copy(m.base); else m.base.copy(bone.quaternion);
+      rig.e.set(ang * k, 0, 0); bone.quaternion.multiply(rig.q.setFromEuler(rig.e)); m.made.copy(bone.quaternion); m.on = true;
+    }
   }
   rig.w.updateWorldMatrix(true, true); rig.w.getWorldQuaternion(rig.wq);
   L.tailBones.forEach((n, i) => {
@@ -494,7 +501,7 @@ function tickCat(dt) {
     c = strays.cat = { k: 'cat', g, x: at[0], z: at[1], y: 0, yaw: 2, sp: 0, stuck: 0, goal: null, wait: 1.5, flee: 0, followT: 0, coolT: 0, hold: 0, px: P.x, pz: P.z, pv: 0 };
   }
   c.pv += (Math.hypot(P.x - c.px, P.z - c.pz) / Math.max(dt, 1e-3) - c.pv) * Math.min(1, dt * 6); c.px = P.x; c.pz = P.z;   // how fast you're coming
-  const dP = Math.hypot(P.x - c.x, P.z - c.z), paws = pawsOf(), running = c.pv > 3.4;
+  const dP = Math.hypot(P.x - c.x, P.z - c.z), paws = pawsOf(), running = c.pv > 3.4, still = c.pv < 0.4, T = PETS.tame;
   c.hold = Math.max(0, c.hold - dt); c.coolT = Math.max(0, c.coolT - dt); c.flee = Math.max(0, c.flee - dt);
   const pick = (cx, cz, r) => { for (let i = 0; i < 8; i++) { const a = rnd(0, 6.283), q = rnd(1.2, r), x = cx + Math.sin(a) * q, z = cz + Math.cos(a) * q; if (catRange(x, z)) return { x, z }; } return null; };
   if (c.hold > 0 || sheet) { stand(c, dt); face(c, P.x, P.z, dt); }
@@ -504,11 +511,11 @@ function tickCat(dt) {
   }
   if (c.hold > 0 || sheet) { /* held still above */ }
   else if (c.flee > 0 && c.goal) { if (step(c, c.goal.x, c.goal.z, 3.6, dt, false) < 0.15 || c.stuck > 0.5) { c.goal = null; c.flee = 0; c.wait = rnd(1.5, 3); } }
-  else if (paws >= 3 && c.coolT <= 0 && dP < 6.5 && dP > 1.25) {              // friendly: tags along for a while, then wanders off
+  else if (paws >= T.tagAt && c.coolT <= 0 && dP < 6.5 && dP > 1.25) {       // friendly: tags along for a few seconds, then wanders off
     step(c, P.x, P.z, Math.min(4.5, 1 + (dP - 1.1) * 2.6), dt, false); c.goal = null;
-    c.followT += dt; if (c.followT > 20) { c.followT = 0; c.coolT = 14; c.wait = 0.5; }
+    c.followT += dt; if (c.followT > T.tagFor) { c.followT = 0; c.coolT = T.tagRest; c.wait = 0.5; }
   }
-  else if (paws >= 1 && paws < 3 && dP < 5 && dP > 1.35 && !running) { step(c, P.x, P.z, 1.3, dt, false); c.goal = null; }   // curious: comes over
+  else if (paws >= T.comeAt && dP < T.comeNear && dP > 1.35 && still) { step(c, P.x, P.z, 1.3, dt, false); c.goal = null; }   // curious: comes over, but only while you stand still close by
   else if (dP < 1.7 && !running) { stand(c, dt); face(c, P.x, P.z, dt); c.goal = null; }   // right beside you: waits to see what you've got
   else {                                                                       // wandering
     if (!c.goal) { stand(c, dt); c.wait -= dt; if (c.wait <= 0) { c.goal = pick(c.x, c.z, 4.5); if (!c.goal) c.wait = 1; } }

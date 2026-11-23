@@ -44,7 +44,7 @@ const RULES = {
   catch:   { start: (S, g) => { g.base = total(S); }, poll: (S, g) => total(S) > (g.base || 0), use: ['Cast', 'Reel!', 'Reel'],
              ui: () => isOn(slot('rod')) ? null : slot('rod'),
              at: () => A.fishing.state === 'idle' ? { x: A.DOCK.x - 0.45, z: -6.5, via: [{ x: A.DOCK.x, z: -3.4 }], ring: true, h: 1.3 } : null },
-  book:    { poll: () => vis('fishBook'), ui: () => vis('menu') ? byId('menuFish') : byId('menuBtn') },
+  book:    { poll: () => vis('fishBook'), ui: () => vis('bag') ? document.querySelector('#bag [data-pack="fish"]') : byId('packBtn') },   // v0.1.148: the backpack, then its Fish Book tab
   sell:    { on: 'sell', use: ['Talk'], at: () => npcAt('higgins'),
              ui: () => vis('sellSheet') ? byId('sellGo') : A.dlgOpen() ? [...document.querySelectorAll('#dChoices button')].find(b => /^Sell/.test(b.textContent)) || null : null },
   bench:   { poll: (S) => S.decor.length > 0,
@@ -113,6 +113,14 @@ export function bar(tools) {   // main.js's renderHotbar asks which tools to dra
 export function debug(k) {
   if (k === 'restart') { A.S.goals = { i: 0 }; doneQ.length = 0; newQ.length = 0; doneEl.hidden = true; A.renderHotbar(); A.commit(); A.toast('Goals: back to the first one'); }
   if (k === 'skip' && cur()) complete();
+  // a fresh debug harbor (Mac, v0.1.151): every goal up to this level counts as done, with its prize in the bag and no "Goal done!" cards
+  if (k === 'all') {
+    const S = A.S, pay = (d) => { if (d.prize.coins) S.coins += d.prize.coins; else A.addItem(d.prize.item, d.prize.n); };
+    const g = S.goals = { i: GOALS.length, done: true, bar: ['farm', 'seeds', 'rod', 'decor', 'fruit'], more: {} };
+    GOALS.forEach(pay);
+    for (const ch of GOALS_MORE) if ((S.level || 1) >= ch.level) { ch.goals.forEach(pay); g.more[ch.id] = { i: ch.goals.length, done: true }; }
+    doneQ.length = 0; newQ.length = 0; doneEl.hidden = true;
+  }
 }
 
 const prizeHTML = (p, big) => p.coins

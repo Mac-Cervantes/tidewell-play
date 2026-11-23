@@ -39,13 +39,28 @@
     border-radius: 50%; width: 46px; height: 46px; display: flex; align-items: center; justify-content: center;
     box-shadow: 0 3px 0 rgba(43, 33, 64, 0.35); padding: 0; color: #2b2140; }
   /* buttons on the right, menu next to the hotbar, the action pops up above it (decision 71, mockup A2) */
-  #actions { right: max(8px, calc(50% - 192px)); bottom: calc(17px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  #actions { right: max(8px, calc(50% - 192px)); bottom: calc(98px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; align-items: center; gap: 10px; }
   #useBtn.popin { animation: popin .42s cubic-bezier(.3,1.6,.5,1) both; }
   #useBtn.popin.pulse { animation: popin .42s cubic-bezier(.3,1.6,.5,1) both, pulse 0.6s ease-in-out .42s infinite alternate; }
   @keyframes popin { 0% { transform: scale(.2); opacity: 0; } 70% { transform: scale(1.12); } 100% { transform: scale(1); opacity: 1; } }
   body:has(#seedTray:not([hidden])) #hint, body:has(#farmTray:not([hidden])) #hint, body:has(#seedTray:not([hidden])) #toolName, body:has(#farmTray:not([hidden])) #toolName { visibility: hidden; }   /* the walk hint sat on top of Undo */
   body:has(#seedTray:not([hidden])) #useBtn, body:has(#farmTray:not([hidden])) #useBtn { margin-bottom: var(--trayLift, 130px); }
-  #menuBtn { width: 62px; height: 62px; background: #ff7a59; color: #fff; }
+  /* v0.1.148 (Mac): the menu is three plain lines in the top row, next to a backpack button; the bottom belongs to the toolbar */
+  #topRow { display: flex; align-items: center; gap: 6px; pointer-events: auto; }
+  /* the backpack sits bottom left, above the toolbar, mirroring the action button on the right (Mac, Nov 22: his circle on the screenshot) */
+  #packBtn { position: fixed; left: max(8px, calc(50% - 192px)); bottom: calc(98px + env(safe-area-inset-bottom)); width: 62px; height: 62px; background: #fffcf4; pointer-events: auto; }
+  body:has(#seedTray:not([hidden])) #packBtn { margin-bottom: var(--trayLift, 130px); }
+  #packBtn img { width: 44px; height: 44px; object-fit: contain; pointer-events: none; }
+  body.farming #packBtn, body.decorating #packBtn, body.inward #packBtn, body.inmenu #packBtn, body.in-store #packBtn, body.lineout #packBtn { display: none !important; }
+  #menuBtn { width: 36px; height: 36px; padding: 0; display: flex; align-items: center; justify-content: center; background: none; border: none; cursor: pointer; filter: drop-shadow(0 0 2px #fff) drop-shadow(0 0 2px #fff) drop-shadow(0 0 1px #fff); }
+  .packTabs { display: flex; gap: 6px; margin: 0 0 10px; }
+  .packTabs button { flex: 1; font: inherit; font-weight: 800; font-size: 14px; padding: 8px 2px; border-radius: 12px; border: 2.5px solid #2b2140; background: #fffcf4; color: #5f5472; cursor: pointer; }
+  .packTabs button.on { background: #ffd97a; color: #2b2140; box-shadow: 0 3px 0 #2b2140; }
+  .packTabs button:disabled { opacity: .45; } .packTabs button small { display: block; font-size: 9px; font-weight: 700; }
+  #fishBook .packTabs { margin: 0 12px 8px; }
+  #farmX { position: absolute; top: -12px; right: -6px; width: 36px; height: 36px; border-radius: 50%; background: #f2654c; border: 3px solid #2b2140; box-shadow: 0 3px 0 #2b2140; padding: 0; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+  body.farming #hotbar { transform: translate(-50%, 180%); pointer-events: none; }
+  body.farming #farmTray { bottom: calc(14px + env(safe-area-inset-bottom)); }
   #useBtn { width: 70px; height: 70px; background: #3ea6e8; color: #fff; font-weight: 700; font-size: 15px;
     flex-direction: column; gap: 0; }
   #joyBase { position: fixed; z-index: 4; width: 120px; height: 120px; margin: -60px 0 0 -60px; border-radius: 50%;
@@ -59,7 +74,7 @@
   /* v0.1.119: on a narrow phone (360 px wide Androids) five tools ran under the menu button. The tools now shrink to fit
      the space left of it: full size from about 390 px up, down to 38 px on a 320 px screen. */
   #hotbar .slot { width: clamp(38px, calc((100vw - 116px) / 5), 56px); height: clamp(38px, calc((100vw - 116px) / 5), 56px); }
-  #hotbar { left: max(6px, calc(50% - 192px)); bottom: calc(14px + env(safe-area-inset-bottom)); display: flex; gap: 5px;
+  #hotbar { left: 50%; transform: translateX(-50%); transition: transform .22s ease; bottom: calc(14px + env(safe-area-inset-bottom)); display: flex; gap: 5px;
     padding: 6px; background: rgba(43, 33, 64, 0.55); border-radius: 18px; pointer-events: auto; }
   .slot { position: relative; width: 56px; height: 56px; border-radius: 13px; border: 2px solid #2b2140; background: rgba(255, 252, 244, 0.95);
     display: flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; box-shadow: 0 2px 0 rgba(43, 33, 64, 0.35); }
@@ -87,6 +102,23 @@
   .seg button.on { background: #2b2140; color: #fff; }
   #ver { right: 14px; top: calc(58px + env(safe-area-inset-top, 0px)); text-align: right; font-size: 11px; font-weight: 600; color: #fff;
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6); }
+  .srow2 { margin-bottom: 8px; padding-bottom: 8px; border-bottom: 2px dashed #d8cfe6; } .srow2[hidden] { display: none; }
+  /* special crops (v0.1.144): the plain picture, tinted per colour */
+  .sp-silver img, img.sp-silver { filter: grayscale(1) brightness(1.35) contrast(.9); }
+  .sp-gold img, img.sp-gold { filter: sepia(1) saturate(6) hue-rotate(-12deg) brightness(1.15); }
+  .sp-frozen img, img.sp-frozen { filter: sepia(1) saturate(5) hue-rotate(160deg) brightness(1.2); }
+  .sp-rainbow img, img.sp-rainbow { filter: saturate(3) hue-rotate(250deg) brightness(1.1); animation: sprain 2.4s linear infinite; }
+  @keyframes sprain { from { filter: saturate(3) hue-rotate(0deg) brightness(1.1); } to { filter: saturate(3) hue-rotate(360deg) brightness(1.1); } }
+  .foodfly { position: fixed; z-index: 40; width: 34px; height: 34px; pointer-events: none; will-change: transform; }
+  .slot.bump { animation: slotbump .22s ease-out; } @keyframes slotbump { 40% { transform: scale(1.14); } }
+  .spdot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid #2b2140; margin-right: 3px; vertical-align: middle; }
+  button.row.bgrp { width: 100%; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+  button.row.bgrp.open { background: #ffe9b0; }
+  .bkinds { display: grid; grid-template-columns: repeat(auto-fill, minmax(74px, 1fr)); gap: 6px; padding: 2px 4px 6px 16px; }
+  .bkind { display: flex; flex-direction: column; align-items: center; gap: 1px; border: 2px solid #2b2140; border-radius: 12px; padding: 5px 2px 4px; background: #fffdf5; font-weight: 700; font-size: 12px; color: #2b2140; }
+  .bkind b { font-size: 11px; } .bkind small { display: flex; align-items: center; gap: 3px; font-size: 11px; color: #5f5472; }
+  #cgVal { display: flex; align-items: center; justify-content: center; gap: 8px; background: #fff6d6; border: 2.5px solid #e0a020; border-radius: 14px; padding: 4px 12px; margin: 6px 0 2px; font-weight: 700; color: #5f5472; font-size: 13px; }
+  #cgVal[hidden] { display: none; } #cgVal b { font-size: 20px; color: #2b2140; } #cgVal i { font-style: normal; font-weight: 800; color: #2e9e4f; animation: popin .3s; }
   .dmg { position: fixed; z-index: 6; pointer-events: none; font-weight: 700; font-size: 24px; color: #ffd23f;
     -webkit-text-stroke: 2px #2b2140; paint-order: stroke fill; transform: translate(-50%, -50%); }
   #toast { left: 50%; top: 34%; transform: translateX(-50%); }
@@ -459,15 +491,16 @@
     <div id="orderTrack" hidden></div>
   </div>
   <div id="topR">
-    <div class="panel small" id="clockBtn"><span id="todIcon"></span><span id="clock">2:15 PM</span></div>
+    <div id="topRow">
+      <button id="menuBtn" aria-label="Open menu"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#2b2140" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M4 6.500h16M4 12h16M4 17.500h16"/></svg></button>
+      <div class="panel small" id="clockBtn"><span id="todIcon"></span><span id="clock">2:15 PM</span></div>
+    </div>
   </div>
 </div>
 
+<button class="btn hud" id="packBtn" aria-label="Backpack"><svg width="40" height="40" viewBox="0 0 256 256" aria-hidden="true"><path d="M208,96V216a8,8,0,0,1-8,8H176V152a16,16,0,0,0-16-16H96a16,16,0,0,0-16,16v72H56a8,8,0,0,1-8-8V96A48,48,0,0,1,96,48h64A48,48,0,0,1,208,96Z" fill="#f2a531"/><path d="M88,152a8,8,0,0,1,8-8h64a8,8,0,0,1,8,8v64H88Z" fill="#fff6d6"/><path fill="#2b2140" d="M168,40.58V32A24,24,0,0,0,144,8H112A24,24,0,0,0,88,32v8.58A56.09,56.09,0,0,0,40,96V216a16,16,0,0,0,16,16H200a16,16,0,0,0,16-16V96A56.09,56.09,0,0,0,168,40.58ZM112,24h32a8,8,0,0,1,8,8v8H104V32A8,8,0,0,1,112,24Zm56,136H88v-8a8,8,0,0,1,8-8h64a8,8,0,0,1,8,8ZM88,176h48v8a8,8,0,0,0,16,0v-8h16v40H88Zm112,40H184V152a24,24,0,0,0-24-24H96a24,24,0,0,0-24,24v64H56V96A40,40,0,0,1,96,56h64a40,40,0,0,1,40,40V216ZM152,88a8,8,0,0,1-8,8H112a8,8,0,0,1,0-16h32A8,8,0,0,1,152,88Z"/></svg></button>
 <div class="hud" id="actions">
   <button class="btn" id="useBtn" hidden><span id="useIcon"></span><span id="useLabel">Cast</span></button>
-  <button class="btn" id="menuBtn" aria-label="Open menu">
-    <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
-  </button>
 </div>
 
 <div id="joyBase" hidden><div id="joyKnob"></div></div>
@@ -494,15 +527,15 @@
 </div>
 <div class="hud" id="decorTray" hidden><div class="dscroll"></div></div>
 <div class="hud" id="seedTray" hidden><div class="stitle"></div><div class="srow"></div></div>
-<div class="hud" id="farmTray" hidden><div class="stitle">Farm tools · pick one, then drag</div><div class="srow"></div></div>
+<div class="hud" id="farmTray" hidden><button id="farmX" aria-label="Put the tool away"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button><div class="stitle">Farm tools · pick one, then drag</div><div class="srow"></div></div>
 <div class="hud" id="ver"></div>
 
 <div id="menu" class="sheet" hidden>
   <div class="card">
     <div class="shophead"><h2>Menu</h2><button class="xbtn" data-close aria-label="Close"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2b2140" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
     <div class="grid">
-      <button data-open="bag">Bag</button><button id="menuOrders">Orders</button><button data-soon="Market">Market</button><button data-soon="Album">Album</button>
-      <button id="menuWard">Wardrobe</button><button data-soon="Map">Map</button><button data-soon="Friends">Friends</button><button data-open="settings">Settings</button><button id="menuFish">Fish Book</button>
+      <button id="menuOrders">Orders</button><button data-soon="Market">Market</button><button data-soon="Album">Album</button>
+      <button id="menuWard">Wardrobe</button><button data-soon="Map">Map</button><button data-soon="Friends">Friends</button><button data-open="settings">Settings</button><button id="menuFish" hidden style="display:none">Fish Book</button>
     </div>
     <button class="close" data-close>Back to Tidewell</button>
   </div>
@@ -510,7 +543,8 @@
 
 <div id="bag" class="sheet" hidden>
   <div class="card">
-    <div class="shophead"><h2>Bag <span class="sub" id="bagCoins"></span></h2><button class="xbtn" data-close aria-label="Close"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2b2140" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+    <div class="shophead"><h2>Backpack <span class="sub" id="bagCoins"></span></h2><button class="xbtn" data-close aria-label="Close"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2b2140" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+    <div class="packTabs" data-on="bag"></div>
     <div id="bagList" class="list"></div>
     <p class="note" id="bagCollection"></p>
     <button class="close" data-close>Close</button>
@@ -548,6 +582,7 @@
   <div class="card cgcard">
     <div class="shophead"><span id="cgIcon" class="cgicon"></span><h2 id="cgTitle">Crate</h2><span id="cgBar" class="cgbar"></span><button class="xbtn" data-close aria-label="Close"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2b2140" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
     <p id="cgHint" class="greet"></p>
+    <div id="cgVal" hidden></div>
     <div class="cglab">In your bag</div>
     <div id="cgHave" class="cggrid"></div>
     <div class="cglab">Loaded (tap to take one back)</div>
@@ -638,7 +673,7 @@
     </div>
     <button class="ghost" id="toMenu">Main menu</button>
     <button class="ghost danger" id="resetReal">Start over (erase my save)</button>
-    <p class="note"><b>Art credits:</b> town, nature and harbor models by Kenney (kenney.nl, CC0). Fish, character rig and crops by Quaternius (CC0). "Ultimate Monsters Pack" by Quaternius, CC BY 4.0. Sound and music: original, made for Tidewell.</p>
+    <p class="note"><b>Art credits:</b> town, nature and harbor models by Kenney (kenney.nl, CC0). Fish, character rig and crops by Quaternius (CC0). "Ultimate Monsters Pack" by Quaternius, CC BY 4.0. Backpack icon from Phosphor Icons (MIT), coloured for Tidewell. Sound and music: original, made for Tidewell.</p>
     <button class="close" data-close>Close</button>
   </div>
 </div>

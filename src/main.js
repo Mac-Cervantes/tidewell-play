@@ -5,10 +5,10 @@ import * as SkeletonUtils from '../lib/addons/utils/SkeletonUtils.js';
 import * as store from './store.js';   // STORE: the walk-in general store (the inside loads later from interior.js)
 import { mergeVertices } from '../lib/addons/utils/BufferGeometryUtils.js';
 import { createCargo } from './cargo.js';
-import { FERT, VERSION, VERSION_LABEL, RARITY, FISH, CROPS, CROP_ORDER, ITEMS, SHOP, DEBUG, BAIT, BAIT_ORDER, DECOR, DECOR_ORDER, STARTER_KIT, ORDER_FOLK, ORDERS, makeOrder, orderFolk, CARGO, TOOLS as GEAR, TOOL_ORDER as GEAR_ORDER, CLEAR_NEEDS, HIT_SECONDS, DIG, XP, LEVELS, xpInto, levelFor, rankFor, unlockLevel, rollFish, seasonInfo, timeOfDay, SIGHTS, rollSize, RODS } from './data.js';
+import { SPECIAL, SPECIAL_RULES, FERT, VERSION, VERSION_LABEL, RARITY, FISH, CROPS, CROP_ORDER, ITEMS, SHOP, DEBUG, BAIT, BAIT_ORDER, DECOR, DECOR_ORDER, STARTER_KIT, ORDER_FOLK, ORDERS, makeOrder, orderFolk, CARGO, TOOLS as GEAR, TOOL_ORDER as GEAR_ORDER, CLEAR_NEEDS, HIT_SECONDS, DIG, XP, LEVELS, xpToNext, xpInto, levelFor, rankFor, unlockLevel, rollFish, seasonInfo, timeOfDay, SIGHTS, rollSize, RODS } from './data.js';
 import { paintSkin, SKIN, HAIR_COLORS, CLOTH } from './look.js';
 import { HAIR3D, hairFor } from './hair3d.js';
-import { wearList, wearFor, hairUnderHat, HATS } from './wear3d.js';
+import { wearList, wearFor, hairUnderHat, HATS, PACKS as BACKPACKS, packModel } from './wear3d.js';
 import CHIPS from './wardrobe-chips.js';
 import { loadSave, storeSave, resetSave, peekSave, loadSettings, storeSettings, storageWorks } from './save.js';
 import { audio } from './audio.js';   // all sound lives in audio.js; the calls below are one-line hooks
@@ -220,7 +220,7 @@ function ensureCrop(id) {
     if (!document.getElementById('orders').hidden) renderOrders();
   });
 }
-const cropOf = (itemId) => { const it = ITEMS[itemId]; return it && (it.kind === 'crop' ? itemId : it.kind === 'seed' ? it.crop : null); };
+const cropOf = (itemId) => { const it = ITEMS[itemId]; return it && (it.kind === 'crop' ? (it.base || itemId) : it.kind === 'seed' ? it.crop : null); };
 // crops this save already uses: planted, in the bag, or asked for on the order board
 function ensureCropsInUse() {
   const ids = new Set(S.plots.map(p => p.crop).filter(Boolean));
@@ -776,8 +776,8 @@ function syncPuppets() {
 }
 
 // ---------- wardrobe (decision 63: mockup A + swipe to turn) ----------
-const DEFAULT_LOOK = { skin: '#f5b48f', hair: 'short', hairColor: '#4d2414', eyes: 'dot', mouth: 'smile', blush: true, top: 'stripe', topColor: '#ffffff', topColor2: '#3e8fe0', bottom: 'shorts', bottomColor: '#e8a24a', shoes: '#f2654c' };
-const WARD_TABS = ['Skin', 'Hair', 'Hat', 'Face', 'Top', 'Bottom', 'Shoes'];
+const DEFAULT_LOOK = { pack: 'day', packColor: '#f2a531', skin: '#f5b48f', hair: 'short', hairColor: '#4d2414', eyes: 'dot', mouth: 'smile', blush: true, top: 'stripe', topColor: '#ffffff', topColor2: '#3e8fe0', bottom: 'shorts', bottomColor: '#e8a24a', shoes: '#f2654c' };
+const WARD_TABS = ['Skin', 'Hair', 'Hat', 'Face', 'Top', 'Bottom', 'Shoes', 'Pack'];
 const HAIRS = [['swoop', 'Side swoop'], ['lob', 'Lob'], ['short', 'Side part'], ['bangs', 'Bangs'], ['bob', 'Bob'], ['long', 'Long'], ['spiky', 'Spiky'], ['buzz', 'Buzz'],
   ...['quiff', 'curly', 'mop', 'topknot', 'ponytail', 'pigtails', 'bun', 'lobA1', 'lobA2', 'lobB', 'lobC', 'long3'].map(h => [h, HAIR3D[h]])];
 const HAT_LIST = [['', 'No hat'], ...Object.entries(HATS)];
@@ -814,7 +814,7 @@ function openWardrobe(first = false) {
 }
 function closeWardrobe() {
   for (const g of ward.tools || []) g.visible = true; ward.tools = [];
-  S.look = { ...ward.look }; ward.on = false; ward.drag = null;
+  S.look = { ...ward.look }; ward.on = false; ward.drag = null; syncPackBtn();
   document.body.classList.remove('inward');
   for (const id of ['wardrobe', 'wardSwipe', 'wardHint']) document.getElementById(id).hidden = true;
   paintPlayer(); commit();
@@ -840,6 +840,10 @@ function renderWardrobe() {
     h += `<div class="wpills">${[['blush', 'Blush'], ['freckles', 'Freckles'], ['beard', 'Beard'], ['mustache', 'Mustache']].map(([k, n]) =>
       `<button class="wpill${(k === 'beard' || k === 'mustache' ? L.beard === k : L[k]) ? ' on' : ''}" data-wtog="${k}">${n}</button>`).join('')}</div>`;
   }
+  if (ward.tab === 'Pack') {   // v0.1.150: an optional backpack with its own colour (more models later)
+    h = `<div class="wchips">${[['', 'None'], ...Object.entries(BACKPACKS)].map(([v, n]) => `<button class="wchip${(L.pack || '') === v ? ' on' : ''}" data-wset="pack" data-v="${v}" aria-label="${n}">${v ? `<img src="${packIcon(L.packColor || '#f2a531')}" alt="">` : `<img src="${CHIPS['hair-buzz']}" alt="">`}</button>`).join('')}</div>`;
+    if (L.pack) h += label('Color') + sws('packColor', CLOTH);
+  }
   if (ward.tab === 'Hat') {
     h = `<div class="wchips">${HAT_LIST.map(([v, n]) => `<button class="wchip${(L.hat || '') === v ? ' on' : ''}" data-wset="hat" data-v="${v}" aria-label="${n}"><img src="${CHIPS[v ? 'hat-' + v : 'hair-buzz']}" alt=""></button>`).join('')}</div>`;
     if (L.hat) h += label('Color') + sws('hatColor', CLOTH) + label('Trim color') + sws('hatColor2', CLOTH);
@@ -861,6 +865,7 @@ function wardSet(key, v) {
   if ((TWO_TONE[L.top] || L.pattern) && !L.topColor2) L.topColor2 = '#3e8fe0';
   if (key === 'top' && !PATTERN_TOPS.includes(v)) delete L.pattern;
   if (key === 'hat' && v) { L.hatColor = L.hatColor || '#f2d38a'; L.hatColor2 = L.hatColor2 || '#f2654c'; }
+  if (key === 'pack' && v) L.packColor = L.packColor || '#f2a531';
   renderWardrobe(); paintPlayer();
 }
 document.getElementById('wardrobe').addEventListener('click', (e) => {
@@ -1366,6 +1371,19 @@ function toast(msg) { toastEl.querySelector('span').textContent = msg; toastEl.h
 const openSheet = (id) => { document.querySelectorAll('.sheet').forEach(x => x.hidden = x.id !== id); if (id === 'bag') renderBag(); if (id === 'settings') renderSettings(); };
 document.getElementById('menuBtn').addEventListener('click', () => openSheet('menu'));
 document.getElementById('menuFish').addEventListener('click', () => dex.open());   // FISHING: the fish book
+// ----- the backpack (v0.1.148, Mac): one menu for the Bag, the Fish Book and, later, the Crop Book -----
+const bookOpen = () => !S.goals || S.goals.done || S.goals.i >= 5;   // the Fish Book arrives with its goal
+function packTabs(el, on) {
+  el.innerHTML = `<button data-pack="bag" class="${on === 'bag' ? 'on' : ''}">Bag</button>${bookOpen() ? `<button data-pack="fish" class="${on === 'fish' ? 'on' : ''}">Fish Book</button>` : ''}<button data-pack="crop" disabled>Crop Book<small>soon</small></button>`;
+}
+function openPack(tab) {
+  if (tab === 'fish' && bookOpen()) { document.querySelectorAll('.sheet').forEach(x => { x.hidden = true; }); dex.open(); const fb = document.querySelector('#fishBook .fb'), hd = fb && fb.querySelector('.fbh');
+    if (hd) { let t = fb.querySelector('.packTabs'); if (!t) { t = document.createElement('div'); t.className = 'packTabs'; hd.insertAdjacentElement('afterend', t); } packTabs(t, 'fish'); } }
+  else { openSheet('bag'); packTabs(document.querySelector('#bag .packTabs'), 'bag'); }
+}
+document.getElementById('packBtn').addEventListener('click', () => openPack('bag'));
+document.addEventListener('click', (e) => { const b = e.target.closest('.packTabs [data-pack]'); if (b && !b.disabled) openPack(b.dataset.pack); });
+document.getElementById('farmX').addEventListener('click', () => { const sl = hotbar.querySelector('[data-tool="farm"]'); if (sl) sl.click(); });   // the toolbar is tucked away while you farm, so this is the way out
 document.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', () => b.closest('.sheet').hidden = true));
 document.querySelectorAll('[data-open]').forEach(b => b.addEventListener('click', () => openSheet(b.dataset.open)));
 document.querySelectorAll('[data-soon]').forEach(b => b.addEventListener('click', () => toast(b.dataset.soon + ' arrives in a later update')));
@@ -1381,7 +1399,9 @@ const ACTIONS = {
   bite: { label: 'Reel!', icon: 'reel', color: '#9fdc95', soft: true, pulse: true },
   till: { label: 'Till', icon: 'hoe', color: '#b5793f' },
   plant: { label: 'Plant', icon: 'sprout', color: '#4caf50' },
+  sow: { label: 'Seed bag', icon: 'seeds', color: '#3fae5a' },   // near several empty plots with seeds in hand: one tap floats you up with the seed bag (v0.1.147)
   harvest: { label: 'Harvest', icon: 'basket', color: '#f2a531' },
+  shears: { label: 'Shears', icon: 'shears', color: '#3fae5a' },   // near several ripe crops: one tap floats you up with the shears (v0.1.143)
   lot: { label: 'Buy', icon: 'coin', color: '#e8a93a' },
   clear: { label: 'Clear', icon: 'hoe', color: '#3e8ee8' },
   load: { label: 'Load', icon: 'crate', color: '#c98d4b' },
@@ -1438,13 +1458,36 @@ function wildPlant(o) {
 }
 function showWild(c, on) { for (const o of wild.get(cellKey(c)) || []) o.visible = on; }
 let plotGeo = null;
+// Plant and soil size (v0.1.154; Mac, Nov 22, mockups B + C): `size` multiplies every plant on its plot, `soil` is the tilled square's width in its 1 m cell,
+// `lift` puts the timer and ripe bubble just above the plant's top instead of at a fixed height. window.__plantLab overrides for mockups.
+const PLANT = { size: 1.6, soil: 1, lift: true, liftMax: 1.3, fruit: 3, giant: 0, thick: 12, stalk: 2 };   // liftMax: the bubble never sits higher than this (head height); fruit: how much each cob and tomato grows (TALL_FRUIT); giant: overrides SPECIAL_RULES.giant.scale when set; thick: stalks in a clump (wheat); stalk: how fat each one is
+// Tall plants keep their size and grow their fruit instead (Mac: "keep the tall plants the same size but the crop (corn) way bigger"): crop -> the mesh that is its fruit.
+const TALL_FRUIT = { corn: 'Yellow', tomato: 'Red' };
+const _fruitGeo = new Map();
+// a copy of a fruit mesh's shape with every separate piece (each cob, each tomato) grown k times about its own middle
+function bigFruit(geo, k) {
+  const key = geo.uuid + '|' + k; if (_fruitGeo.has(key)) return _fruitGeo.get(key);
+  const g = geo.clone(), pos = g.attributes.position, n = pos.count, par = new Int32Array(n), at = new Map();
+  const find = (i) => { while (par[i] !== i) { par[i] = par[par[i]]; i = par[i]; } return i; };
+  for (let i = 0; i < n; i++) {   // corners at the same spot are one corner
+    const h = Math.round(pos.getX(i) * 1e4) + ',' + Math.round(pos.getY(i) * 1e4) + ',' + Math.round(pos.getZ(i) * 1e4);
+    if (at.has(h)) par[i] = at.get(h); else { at.set(h, i); par[i] = i; }
+  }
+  const idx = g.index, tri = idx ? idx.count : n;
+  for (let t = 0; t < tri; t += 3) { const a = find(idx ? idx.getX(t) : t), b = find(idx ? idx.getX(t + 1) : t + 1), c = find(idx ? idx.getX(t + 2) : t + 2); par[b] = a; par[find(c)] = a; }
+  const mid = new Map();
+  for (let i = 0; i < n; i++) { const r = find(i); let m = mid.get(r); if (!m) mid.set(r, m = [0, 0, 0, 0]); m[0] += pos.getX(i); m[1] += pos.getY(i); m[2] += pos.getZ(i); m[3]++; }
+  for (let i = 0; i < n; i++) { const m = mid.get(find(i)), cx = m[0] / m[3], cy = m[1] / m[3], cz = m[2] / m[3]; pos.setXYZ(i, cx + (pos.getX(i) - cx) * k, cy + (pos.getY(i) - cy) * k, cz + (pos.getZ(i) - cz) * k); }
+  pos.needsUpdate = true; g.computeBoundingBox(); g.computeBoundingSphere(); _fruitGeo.set(key, g); return g;
+}
+const plantLab = () => ({ ...PLANT, ...(window.__plantLab || {}) });
 function addPlot(c, saved, quiet) {
   if (plots.has(cellKey(c))) return plots.get(cellKey(c));
   if (!saved) audio.play('till');
   plotMat = plotMat || new THREE.MeshStandardMaterial({ color: 0x7a5233, roughness: 1, flatShading: true });
   rowMat = rowMat || new THREE.MeshStandardMaterial({ color: 0x5e3d24, roughness: 1 });
   const g = new THREE.Group();
-  plotGeo = plotGeo || { base: new THREE.BoxGeometry(0.92, 0.08, 0.92), row: new THREE.BoxGeometry(0.8, 0.06, 0.12) };
+  if (!plotGeo) { const w = plantLab().soil; plotGeo = { base: new THREE.BoxGeometry(w, 0.08, w), row: new THREE.BoxGeometry(w - 0.12, 0.06, 0.12) }; }
   const base = new THREE.Mesh(plotGeo.base, plotMat); base.receiveShadow = true; g.add(base);
   for (let i = -1; i <= 1; i++) { const r = new THREE.Mesh(plotGeo.row, rowMat); r.position.set(0, 0.05, i * 0.26); g.add(r); }
   const cx = c.x + 0.5, cz = c.z + 0.5; g.position.set(cx, groundY(cx, cz) + 0.02, cz);
@@ -1461,7 +1504,7 @@ function removePlot(p) {
   S.plots = S.plots.filter(q => q !== p.save);
 }
 // size of a Quaternius crop on its plot: fit the ripe plant's footprint inside the plot
-const cropScale = {};
+const cropScale = {}, _plantBox = new THREE.Box3();
 function plotScale(id) {
   if (cropScale[id] == null) {
     const c = CROPS[id], last = M.crops[c.stages[c.stages.length - 1]].scene, sz = new THREE.Box3().setFromObject(last).getSize(new THREE.Vector3());
@@ -1469,9 +1512,56 @@ function plotScale(id) {
   }
   return cropScale[id];
 }
+// ----- special crops (v0.1.144): rolled once when a crop turns ripe; p.save.roll = { v: colour or '', sz: 0 normal, 1 big, 2 giant } -----
+function rollCrop(p) {
+  if (window.__rollLab) { p.save.roll = { v: '', sz: 0, ...window.__rollLab(p) }; return; }   // tests and mockups
+  const R = SPECIAL_RULES, winter = seasonInfo().season === 'Winter', raining = weather.level > 0.2; let v = '';
+  for (const k of R.order) {
+    const sp = SPECIAL[k]; if (sp.winter && !winter) continue;
+    let ch = 1 / sp.oneIn; if (p.save.fert) ch *= R.fertilized; if (p.save.wet1 && (k === 'gold' || k === 'rainbow')) ch *= R.watered; if (raining && k === 'rainbow') ch *= R.rain;
+    if (Math.random() < ch) { v = k; break; }
+  }
+  const r = Math.random(), sz = r < 1 / R.giant.oneIn ? 2 : r < 1 / R.giant.oneIn + 1 / R.big.oneIn ? 1 : 0;
+  p.save.roll = { v, sz };
+}
+function specialLook(m, roll) {
+  if (roll.sz) m.scale.multiplyScalar(roll.sz === 2 ? (plantLab().giant || SPECIAL_RULES.giant.scale) : SPECIAL_RULES.big.scale);
+  if (!roll.v) return; let i = 0;
+  m.traverse(o => { if (!o.isMesh) return;
+    const mat = new THREE.MeshStandardMaterial({ flatShading: true, roughness: 0.25, metalness: 0.7 });
+    if (roll.v === 'gold') { mat.color.set(0xffc928); mat.emissive.set(0x7a4a00); }
+    else if (roll.v === 'silver') { mat.color.set(0xe6ecf5); mat.emissive.set(0x4a5260); }
+    else if (roll.v === 'frozen') { mat.color.set(0x9fe3ff); mat.emissive.set(0x1c5f8a); mat.metalness = 0.3; mat.transparent = true; mat.opacity = 0.9; }
+    else { mat.color.setHSL((i * 0.23 + 0.02) % 1, 0.95, 0.58); mat.emissive.setHSL((i * 0.23 + 0.02) % 1, 0.9, 0.2); mat.metalness = 0.35; }
+    o.material = mat; i++; });
+}
+// what a ripe plot gives: the item (plain or a colour), how many, and its size
+function reap(p) {
+  const crop = CROPS[p.save.crop], r = p.save.roll || { v: '', sz: 0 };
+  let n = crop.yield[0];   // v0.1.146 (Mac): a plain plant always gives its low number (it used to give the high one 45% of the time); extras only come from big and giant plants
+  if (r.sz === 1) n += SPECIAL_RULES.big.extra; if (r.sz === 2) n *= SPECIAL_RULES.giant.times;
+  return { item: r.v ? `${crop.item}_${r.v}` : crop.item, n, sz: r.sz, roll: p.save.roll || null };
+}
+function clearCropSave(p) { p.save.crop = null; p.save.plantedAt = 0; p.save.watered = null; p.save.roll = null; p.save.wet1 = null; p.save.fert = null; p.save.emptySince = Date.now(); }
+// a big or giant plant pops: a chop, then each food floats to the basket and lands on the next note of an arpeggio (Mac)
+function popFood(p, item, n) {
+  audio.play('chop');
+  tagV.set(p.cell.x + 0.5, 0.6, p.cell.z + 0.5).project(camera);
+  const x0 = (tagV.x + 1) / 2 * innerWidth, y0 = (1 - tagV.y) / 2 * innerHeight;
+  const slot = hotbar.querySelector('[data-tool="fruit"]') || hotbar, r = slot.getBoundingClientRect(), x1 = r.left + r.width / 2, y1 = r.top + r.height / 2;
+  const it = ITEMS[item], src = cropIcon[it.base || item]; if (!src) return;
+  for (let i = 0; i < Math.min(n, 12); i++) {
+    const el = document.createElement('img'); el.src = src; el.className = 'foodfly' + (it.special ? ' sp-' + it.special : ''); el.style.left = x0 + 'px'; el.style.top = y0 + 'px'; document.body.appendChild(el);
+    const dx = (Math.random() - 0.5) * 90, dy = -40 - Math.random() * 50;
+    const a = el.animate([{ transform: 'translate(-50%,-50%) scale(.4)', offset: 0 }, { transform: `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) scale(1.15)`, offset: 0.3 },
+      { transform: `translate(calc(-50% + ${x1 - x0}px), calc(-50% + ${y1 - y0}px)) scale(.5)`, offset: 1 }], { duration: 620, delay: 120 + i * 95, easing: 'cubic-bezier(.4,0,.6,1)', fill: 'both' });
+    a.onfinish = () => { el.remove(); audio.play('foodNote', i); slot.classList.remove('bump'); void slot.offsetWidth; slot.classList.add('bump'); };
+  }
+}
 function syncCrop(p, quiet) {
   const st = stageOf(p), c = p.save.crop && CROPS[p.save.crop];
   p.grown = !!c && st === c.stages.length - 1;
+  if (p.grown && !p.save.roll) rollCrop(p);
   if (st === p.stage) return;
   if (p.save.watered != null && p.save.watered !== st) p.save.watered = null;
   setWet(p);
@@ -1484,31 +1574,37 @@ function syncCrop(p, quiet) {
     ensureCrop(p.save.crop);
     m = M.nature.crops_leafsStageA.scene.clone(true); m.scale.setScalar(SCALE.nature * 0.5); m.position.y = 0.05; m.rotation.y = rot;
   } else if (c.kit === 'crops') {
-    m = new THREE.Group(); const sc = plotScale(p.save.crop), n = c.clump || 1;
+    m = new THREE.Group(); const L = plantLab(), fruit = L.fruit !== 1 && TALL_FRUIT[p.save.crop], sc = plotScale(p.save.crop) * (fruit ? 1 : L.size), n = c.clump ? (L.thick || c.clump) : 1;
     for (let i = 0; i < n; i++) {   // thin crops (wheat) grow as a small clump
       const o = M.crops[model].scene.clone(true); o.scale.setScalar(sc);
-      if (n > 1) o.position.set(((i * 37) % 3 - 1) * 0.12, 0, (i - (n - 1) / 2) * 0.26);
+      if (n > 1 && L.thick) o.scale.set(sc / L.size * L.stalk, sc, sc / L.size * L.stalk);   // a thick clump grows taller, not wider, so it stays on its plot
+      if (fruit && p.grown) o.traverse(q => { if (q.isMesh && q.name === fruit) q.geometry = bigFruit(q.geometry, L.fruit); });
+      if (n > 1 && L.thick) o.position.set((i % 3 - 1) * 0.27 + ((i * 53) % 7 - 3) * 0.018, 0, (Math.floor(i / 3) - (Math.ceil(n / 3) - 1) / 2) * 0.27 + ((i * 31) % 5 - 2) * 0.02);   // thick: rows of three with a little wobble
+      else if (n > 1) o.position.set(((i * 37) % 3 - 1) * 0.12, 0, (i - (n - 1) / 2) * 0.26);
       o.rotation.y = rot + i * 2.1; m.add(o);
     }
     m.position.y = 0.04;
   } else {
     m = M.nature[model].scene.clone(true);
-    m.scale.setScalar(SCALE.nature * (p.grown ? 0.7 : 0.6)); m.position.y = 0.05; m.rotation.y = rot;
+    m.scale.setScalar(SCALE.nature * (p.grown ? 0.7 : 0.6) * plantLab().size); m.position.y = 0.05; m.rotation.y = rot;
   }
+  if (p.grown && p.save.roll) specialLook(m, p.save.roll);
+  if (c.clump && plantLab().thick && m.scale.x !== 1) { const k = m.scale.x; m.scale.setScalar(1); for (const o of m.children) o.scale.multiplyScalar(k); }   // big and giant clumps: each stalk grows where it stands, rooted in its plot
+  p.top = _plantBox.setFromObject(m).max.y;   // how tall it stands on its plot, for the tag
   shadowize(m); p.g.add(m); p.cropMesh = m;
   if (p.grown && !quiet && (c.kit !== 'crops' || M.crops[model])) damageText(p.g.position.clone().setY(p.g.position.y + 1.0), 'Ready!');
 }
 function plantIn(p, crop) { audio.play('plant'); p.save.crop = crop; p.save.plantedAt = Date.now(); p.save.emptySince = null; p.stage = -2; syncCrop(p, true); }
 function harvest(p) {
   audio.play('harvest');
-  const crop = CROPS[p.save.crop];
-  const n = crop.yield[0] + (Math.random() < 0.45 ? crop.yield[1] - crop.yield[0] : 0);
-  addItem(crop.item, n); addXP(XP.crop * n); goals.event('harvest');   // GOALS
-  p.save.crop = null; p.save.plantedAt = 0; p.save.emptySince = Date.now(); syncCrop(p);
+  const { item, n, sz, roll } = reap(p);
+  addItem(item, n); addXP(XP.crop * n); goals.event('harvest');   // GOALS
+  if (sz) popFood(p, item, n);
+  clearCropSave(p); syncCrop(p);
   damageText(p.g.position.clone().setY(p.g.position.y + 1.0), '+' + n);
-  toast(`Harvested ${n} ${crop.name.toLowerCase()}${n > 1 ? 's' : ''}`);
+  toast(`Harvested ${n} ${ITEMS[item].name.toLowerCase()}${n > 1 ? 's' : ''}`);
   renderHotbar(); commit();
-  return n;
+  return { n, item, roll };
 }
 // an empty plot (harvested, or tilled and never planted) goes back to grass after 2 real hours (Mac), counting time away
 const GRASS_MS = 2 * 3600e3;
@@ -1573,6 +1669,8 @@ function doAction(a) {
     if (fishing.state !== 'idle') return;
     if (a.at && (S.tapCasts || 0) < AIM_TAPS) S.tapCasts = (S.tapCasts || 0) + 1;   // AIM: they found the water tap
     beginCast(a.at ? a.at.clone().setY(0) : castTarget());
+  } else if (a.kind === 'shears' || a.kind === 'sow') {
+    S.farmTool = a.kind === 'sow' ? 'seeds' : 'shears'; selectTool('farm'); farmOpen(); renderHotbar();
   } else if (a.kind === 'reel' || a.kind === 'wait') {
     if (!reel.early()) reelIn();   // REEL: a tap on a nibble is too early
   } else if (a.kind === 'bite') {
@@ -1586,8 +1684,8 @@ function doAction(a) {
     if (invCount(sd) <= 0) { toast(`Out of seeds. ${seedSeller()} sells more.`); return; }
     upperOneShot('PickUp', 0.6); addItem(sd, -1); plantIn(a.plot, ITEMS[sd].crop); renderHotbar(); history.push({ kind: 'plant', key: cellKey(a.plot.cell), seed: sd }); commit();
   } else if (a.kind === 'harvest') {
-    upperOneShot('PickUp', 0.6); const plantedAt = a.plot.save.plantedAt, crop = a.plot.save.crop; const n = harvest(a.plot);
-    history.push({ kind: 'harvest', key: cellKey(a.plot.cell), n, plantedAt, crop });
+    upperOneShot('PickUp', 0.6); const plantedAt = a.plot.save.plantedAt, crop = a.plot.save.crop; const got = harvest(a.plot);
+    history.push({ kind: 'harvest', key: cellKey(a.plot.cell), n: got.n, item: got.item, roll: got.roll, plantedAt, crop });
   }
 }
 // tap the ground: act on that square, walking over first if it's out of reach
@@ -1654,7 +1752,7 @@ undoBtn.addEventListener('click', () => {
   const p = plots.get(h.key);
   if (h.kind === 'till' && p && !p.save.crop) removePlot(p);
   else if (h.kind === 'plant' && p && p.save.crop) { p.save.crop = null; p.save.emptySince = Date.now(); syncCrop(p); addItem(h.seed || 'seed_turnip', 1); }
-  else if (h.kind === 'harvest' && p && invCount(CROPS[h.crop].item) >= h.n) { addItem(CROPS[h.crop].item, -h.n); addXP(-XP.crop * h.n); p.save.crop = h.crop; p.save.plantedAt = h.plantedAt; syncCrop(p, true); }
+  else if (h.kind === 'harvest' && p && invCount(h.item || CROPS[h.crop].item) >= h.n) { addItem(h.item || CROPS[h.crop].item, -h.n); addXP(-XP.crop * h.n); p.save.crop = h.crop; p.save.plantedAt = h.plantedAt; p.save.roll = h.roll || { v: '', sz: 0 }; p.stage = -2; syncCrop(p, true); }
   else { toast("Can't undo that now"); return; }
   renderHotbar(); commit();
   toast('Undone');
@@ -1663,13 +1761,15 @@ undoBtn.addEventListener('click', () => {
 // It was to the left until v0.1.119; Mac: "the undo button should be above the plant button".
 function placeUndo() {
   if (undoBtn.hidden) return;
-  const ref = (!useBtn.hidden ? useBtn : document.getElementById('menuBtn')).getBoundingClientRect();
-  undoBtn.style.left = Math.min(innerWidth - 70, ref.left + ref.width / 2 - 32) + 'px';
-  undoBtn.style.top = (ref.top - 64 - 10) + 'px';
+  // above the action button; with no action showing, it takes the action button's own spot (the menu left the corner in v0.1.148)
+  const ar = document.getElementById('actions').getBoundingClientRect();
+  if (!useBtn.hidden) { const ref = useBtn.getBoundingClientRect(); undoBtn.style.left = Math.min(innerWidth - 70, ref.left + ref.width / 2 - 32) + 'px'; undoBtn.style.top = (ref.top - 64 - 10) + 'px'; }
+  else { undoBtn.style.left = Math.min(innerWidth - 70, ar.right - 67) + 'px'; undoBtn.style.top = (ar.bottom - 64) + 'px'; }
 }
 // Undo is for the slip you just made: it goes away 12 s after the action, and it stays hidden during the first ten goals.
 // (A playtester tapped it long after planting, which pulled up their tutorial turnip and sent them back to the start. Mac, v0.1.79)
 const UNDO_MS = 12000;
+const SHEARS_AT = 3, SHEARS_NEAR = 2.6;   // this many ripe crops within this many meters turn Harvest into the shears button
 function updateUndo() {
   const now = Date.now(); history.forEach(h => { h.t = h.t || now; });
   if (history.length && now - history[history.length - 1].t > UNDO_MS) history.length = 0;
@@ -1711,6 +1811,7 @@ function updateMarker(dt) {
 // ---------- farm tools (decision 58, mockup A): float up, pick a tool, drag it across the field while you dangle ----------
 const FARM_TOOLS = {
   hoe: { name: 'Hoe', icon: 'hoe', sub: 'till' },
+  seeds: { name: 'Seeds', icon: 'seeds', sub: 'plant', seeds: true },   // v0.1.147 (Mac): float with a seed bag and plant every empty plot you swipe over; shows while you have seeds
   shears: { name: 'Shears', icon: 'shears', sub: 'harvest' },
   can: { name: 'Watering can', short: 'Can', icon: 'can', sub: 'water' },
   fert: { name: 'Fertilizer', icon: 'fert', sub: `${FERT.minutes} min faster`, bag: 'fertilizer' },   // shows while you have bags (bought from Rosa)
@@ -1718,7 +1819,7 @@ const FARM_TOOLS = {
   saw: { name: 'Saw', icon: 'saw', sub: 'trees · logs', gear: true, tap: 'Walk up to a tree or log and tap Clear to use the saw.' },
   pick: { name: 'Pickaxe', icon: 'pick', sub: 'big rocks', gear: true, tap: 'Walk up to a big rock and tap Clear to use the pickaxe.' },
 };
-const FARM_ORDER = ['hoe', 'shears', 'can', 'fert', 'shovel', 'saw', 'pick'];
+const FARM_ORDER = ['hoe', 'seeds', 'shears', 'can', 'fert', 'shovel', 'saw', 'pick'];
 const WATER_MS = 60000;            // watering takes this much off the grow time, once per growth stage
 const FLOAT = 0.35;                // how high you float while the farm tools are out (m)
 // mode: off -> tray (floating, picking) -> ready (tool overhead) -> drag (dangling under your finger) -> return (floating home) -> land -> off
@@ -1726,23 +1827,34 @@ const farm = { mode: 'off', lift: 0, t: 0, P: new THREE.Vector3(), from: new THR
   foot: new THREE.Vector3(), footO: new THREE.Vector3(), lastG: null, done: new Set(), got: 0, n: 0, upright: 1, retDur: 0.8 };
 const farmTray = document.getElementById('farmTray');
 // the tool you used last (null until you've picked one); the hotbar shows shears until then
-function farmPicked() { const t = FARM_TOOLS[S.farmTool]; return t && !(t.bag && !invCount(t.bag)) ? S.farmTool : null; }
+const noSeeds = (t) => t.seeds && invCount(seedSel()) <= 0;
+function farmPicked() { const t = FARM_TOOLS[S.farmTool]; return t && !(t.bag && !invCount(t.bag)) && !noSeeds(t) ? S.farmTool : null; }
 function farmSel() { return farmPicked() || 'shears'; }
+// Changing seeds while you float with the seed bag. '' = off · 'row' = a second row of your seeds under the tools · 'swap' = the tools make way for your seeds, with a back tile.
+const SEED_PICK = 'row';   // Mac picked the row, above the tools (Nov 22)
+const seedPick = () => (window.__seedPickLab != null ? window.__seedPickLab : SEED_PICK);
+const seedChips = () => { const sel = seedSel(); return CROP_ORDER.filter(id => invCount(CROPS[id].seed) > 0).map(id => { const c = CROPS[id], sd = c.seed;
+  return `<button class="schip${sd === sel ? ' on' : ''}" data-seed="${sd}" aria-pressed="${sd === sel}" aria-label="${c.name} seeds, ${invCount(sd)}">${cropImg(id, 26)}<span class="sn">${c.name}</span><span class="st">${c.growMinutes}m</span><b>${invCount(sd)}</b></button>`; }).join(''); };
 function renderFarmTray() {
   const show = (farm.mode === 'tray' || farm.mode === 'ready') && !decor.on;
   farmTray.hidden = !show; if (!show) return;
   const sel = farm.mode === 'ready' ? farmPicked() : null;   // highlighted = the tool in your hands
   // tools you don't own yet stay out of the tray; it fills up as you buy them (Mac, v0.1.70)
-  farmTray.querySelector('.srow').innerHTML = FARM_ORDER.filter(id => !(FARM_TOOLS[id].gear && !hasTool(id)) && !(FARM_TOOLS[id].bag && !invCount(FARM_TOOLS[id].bag))).map(id => { const t = FARM_TOOLS[id];
-    const locked = t.gear && !hasTool(id), tag = t.bag ? `<b>${invCount(t.bag)}</b>` : locked ? `<span class="slock">${svg('lock', '#fff', 10)}${GEAR[id].price}</span>` : '';
+  farmTray.querySelector('.srow:not(.srow2)').innerHTML = FARM_ORDER.filter(id => !(FARM_TOOLS[id].gear && !hasTool(id)) && !(FARM_TOOLS[id].bag && !invCount(FARM_TOOLS[id].bag)) && !noSeeds(FARM_TOOLS[id])).map(id => { const t = FARM_TOOLS[id];
+    const locked = t.gear && !hasTool(id), tag = t.seeds ? `<b>${invCount(seedSel())}</b>` : t.bag ? `<b>${invCount(t.bag)}</b>` : locked ? `<span class="slock">${svg('lock', '#fff', 10)}${GEAR[id].price}</span>` : '';
     return `<button class="schip${id === sel ? ' on' : ''}${locked ? ' locked' : ''}" data-farm="${id}" aria-pressed="${id === sel}" aria-label="${t.name}: ${t.sub}">${tag}${svg(t.icon, '#2b2140', 26)}<span class="sn">${t.short || t.name}</span><span class="st">${t.sub}</span></button>`; }).join('');
+  let row2 = farmTray.querySelector('.srow2'); if (!row2) { row2 = document.createElement('div'); row2.className = 'srow srow2'; const tools = farmTray.querySelector('.srow'); tools.parentNode.insertBefore(row2, tools); }   // seeds sit above the tools (Mac)
+  const mode = sel === 'seeds' ? seedPick() : '';
+  row2.hidden = mode !== 'row'; if (mode === 'row') row2.innerHTML = seedChips();
+  if (mode === 'swap') farmTray.querySelector('.srow:not(.srow2)').innerHTML = `<button class="schip" data-farm="hoe" data-back="1" aria-label="Back to the tools">${svg('hoe', '#2b2140', 22)}<span class="sn">Tools</span><span class="st">back</span></button>` + seedChips();
 }
 farmTray.addEventListener('click', (e) => {
+  const sb = e.target.closest('[data-seed]'); if (sb) { S.seedSel = sb.dataset.seed; farm.seed = null; commit(); renderHotbar(); renderFarmTray(); return; }
   const b = e.target.closest('[data-farm]'); if (!b) return;
   const t = FARM_TOOLS[b.dataset.farm];
   if (t.gear && !hasTool(b.dataset.farm)) { toast(`${toolSeller()} sells the ${t.name.toLowerCase()} (${GEAR[b.dataset.farm].price} coins, town level ${GEAR[b.dataset.farm].level}).`); return; }
   if (t.tap) { toast(t.tap); return; }
-  S.farmTool = b.dataset.farm; commit();
+  S.farmTool = b.dataset.farm; farm.seed = null; commit();
   if (farm.mode !== 'ready') { farm.mode = 'ready'; farm.t = 0; resetDangle(); }   // switching tools keeps you where you are
   renderHotbar(); showFarmTool();
   document.querySelector('#toolName span').textContent = FARM_TOOLS[S.farmTool].name + ' \u00b7 drag across your field'; document.getElementById('toolName').hidden = false; toolNameT = 2.2;
@@ -1750,7 +1862,7 @@ farmTray.addEventListener('click', (e) => {
 function farmOpen() {
   // float up facing the camera; your last tool comes straight into your hands so you can drag right away (or switch)
   // turn to the camera at once: turning while you hang off the tool swung the body round in a circle before it settled (Mac)
-  farm.t = 0; player.walkTo = null; player.faceYaw = Math.PI; player.yaw = Math.PI;
+  farm.t = 0; farm.seed = null; player.walkTo = null; player.faceYaw = Math.PI; player.yaw = Math.PI;
   farm.mode = farmPicked() ? 'ready' : 'tray';
   if (farm.mode === 'ready') { resetDangle(); showFarmTool(); document.querySelector('#toolName span').textContent = FARM_TOOLS[farmPicked()].name + ' \u00b7 drag across your field'; document.getElementById('toolName').hidden = false; toolNameT = 2.2; }
   renderFarmTray();
@@ -1862,26 +1974,35 @@ function farmWork(G) {
 }
 function farmApply(c, k) {
   const p = plots.get(k), kind = farmSel();
+  if (kind === 'seeds') {   // one seed into every empty tilled plot; it keeps to the seed you started with and stops when that runs out
+    if (!p || p.save.crop) return false;
+    const sd = farm.seed || (farm.seed = seedSel()); if (invCount(sd) <= 0) return false;
+    addItem(sd, -1); plantIn(p, ITEMS[sd].crop); history.push({ kind: 'plant', key: k, seed: sd });
+    farm.n++; buzz(); renderHotbar(); renderFarmTray(); return true;
+  }
   if (kind === 'shears') {
     if (!p || !p.grown) return false;
-    const crop = CROPS[p.save.crop], plantedAt = p.save.plantedAt, cropId = p.save.crop;
-    const n = crop.yield[0] + (Math.random() < 0.45 ? crop.yield[1] - crop.yield[0] : 0);
-    addItem(crop.item, n); addXP(XP.crop * n); goals.event('harvest'); p.save.crop = null; p.save.plantedAt = 0; p.save.watered = null; p.save.emptySince = Date.now(); syncCrop(p);
+    const plantedAt = p.save.plantedAt, cropId = p.save.crop;
+    const { item, n, sz, roll } = reap(p);
+    addItem(item, n); addXP(XP.crop * n); goals.event('harvest'); if (sz) popFood(p, item, n); clearCropSave(p); syncCrop(p);
     damageText(p.g.position.clone().setY(p.g.position.y + 0.9), '+' + n);
-    history.push({ kind: 'harvest', key: k, n, plantedAt, crop: cropId });
+    history.push({ kind: 'harvest', key: k, n, item, roll, plantedAt, crop: cropId });
     farm.got += n; farm.n++; buzz(); audio.play('harvest'); renderHotbar(); return true;
   }
   if (kind === 'can') {
     if (!p || !p.save.crop || p.grown) return false;
     const st = stageOf(p);
-    if (p.save.watered === st) return true;   // already watered this stage
-    p.save.plantedAt -= WATER_MS; p.save.watered = stageOf(p) === st ? st : null; syncCrop(p); setWet(p);
-    damageText(p.g.position.clone().setY(p.g.position.y + 0.8), '-1m'); addSplash(c.x + 0.5, c.z + 0.5, true);
+    if (p.save.watered === st) return true;   // already wet
+    // the minute comes off once per crop (Mac, v0.1.144; it was once per growth stage). Watering again only wets the soil.
+    const first = !p.save.wet1; p.save.wet1 = 1;
+    if (first) p.save.plantedAt -= WATER_MS;
+    p.save.watered = stageOf(p) === st ? st : null; syncCrop(p); setWet(p);
+    if (first) damageText(p.g.position.clone().setY(p.g.position.y + 0.8), '-1m'); addSplash(c.x + 0.5, c.z + 0.5, true);
     farm.n++; buzz(); audio.play('water'); return true;
   }
   if (kind === 'fert') {   // one bag per crop: it grows FERT.minutes sooner
     if (!p || !p.save.crop || p.grown || !invCount('fertilizer')) return false;
-    addItem('fertilizer', -1); p.save.plantedAt -= FERT.minutes * 60000; p.save.watered = null; syncCrop(p);
+    addItem('fertilizer', -1); p.save.fert = 1; p.save.plantedAt -= FERT.minutes * 60000; p.save.watered = null; syncCrop(p);
     damageText(p.g.position.clone().setY(p.g.position.y + 0.8), `-${FERT.minutes}m`);
     farm.n++; farm.fert = (farm.fert || 0) + 1; buzz(); audio.play('plant'); goals.event('fert'); return true;   // GOALS
   }
@@ -1919,7 +2040,7 @@ function setRows(p, mat) { for (let i = 1; i <= 3; i++) if (p.g.children[i]) p.g
 // tool held overhead (world space, follows the hands)
 const farmToolMesh = {};
 // where each tool is held, in the tool's own space: the shears' rings, the can's handle, low on the hoe's shaft
-const TOOL_GRIP = { shears: [0, 0.02, 0], can: [0, 0, 0], fert: [0, 0, 0], hoe: [0.074, 0.01, 0], shovel: [0.074, 0.01, 0] };
+const TOOL_GRIP = { shears: [0, 0.02, 0], can: [0, 0, 0], fert: [0, 0, 0], seeds: [0, 0, 0], hoe: [0.074, 0.01, 0], shovel: [0.074, 0.01, 0] };
 let CAN_PICK = 'level';
 function makeFarmTools() {
   const m = (geo, color, x, y, z) => { const o = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color, roughness: 0.5 })); o.position.set(x, y, z); o.castShadow = true; return o; };
@@ -1955,7 +2076,14 @@ function makeFarmTools() {
   const tie = m(new THREE.TorusGeometry(0.045, 0.012, 6, 10), 0x8a5a34, 0, 0.035, 0); tie.rotation.x = Math.PI / 2; fb.add(tie);
   const leaf = m(new THREE.CircleGeometry(0.06, 10), 0x5aa54a, 0, 0.21, 0.13); leaf.scale.set(0.6, 1, 1); fb.add(leaf);
   fb.rotation.z = 0.45;
-  for (const [k, g] of [['shears', sh], ['can', can], ['hoe', hoe], ['shovel', shv], ['fert', fert]]) { g.visible = false; scene.add(g); farmToolMesh[k] = g; }
+  // seed bag: a small tan sack held by its neck, tipped a little so seeds trickle out
+  const sbag = new THREE.Group(), sbb = new THREE.Group(); sbag.add(sbb);
+  const ssack = m(new THREE.SphereGeometry(0.13, 10, 8), 0xd9c08a, 0, 0.18, 0); ssack.scale.set(1, 1.15, 0.8); ssack.material.flatShading = true; sbb.add(ssack);
+  sbb.add(m(new THREE.CylinderGeometry(0.03, 0.06, 0.08, 8), 0xe8d5a6, 0, 0.03, 0));
+  const stie = m(new THREE.TorusGeometry(0.04, 0.011, 6, 10), 0x8a5a34, 0, 0.035, 0); stie.rotation.x = Math.PI / 2; sbb.add(stie);
+  sbb.add(m(new THREE.CircleGeometry(0.05, 10), 0x4caf50, 0, 0.19, 0.105));
+  sbb.rotation.z = 0.35;
+  for (const [k, g] of [['shears', sh], ['can', can], ['hoe', hoe], ['shovel', shv], ['fert', fert], ['seeds', sbag]]) { g.visible = false; scene.add(g); farmToolMesh[k] = g; }
 }
 function showFarmTool() { const k = farmSel(), on = farm.mode === 'ready' || farm.mode === 'drag' || farm.mode === 'return'; for (const [id, g] of Object.entries(farmToolMesh)) g.visible = on && id === k; }
 const ease3 = (u) => { u = Math.min(1, Math.max(0, u)); return u * u * (3 - 2 * u); };
@@ -1986,6 +2114,7 @@ function applyFarmPose(dt) {
   if (farm.mode === 'land' && farm.landTo) { const k = Math.min(1, dt * 8); player.pos.x += (farm.landTo.x - player.pos.x) * k; player.pos.z += (farm.landTo.z - player.pos.z) * k; }
   farm.lift += ((floating ? FLOAT : 0) - farm.lift) * Math.min(1, dt * (floating ? 5 : 7));
   if (farm.mode === 'land' && farm.lift < 0.01) { farm.lift = 0; farm.mode = 'off'; if (farm.landTo) { player.pos.x = farm.landTo.x; player.pos.z = farm.landTo.z; farm.landTo = null; } if (tool === 'farm') selectTool('none', true); }
+  document.body.classList.toggle('farming', farm.mode !== 'off');   // v0.1.148: the toolbar slides away for as long as you float
   // v0.1.136 (Mac: "the player's right arm stays up after releasing a tool"): nothing else poses the forearms while you stand, so
   // the hanging pose left the right one bent up. The arms are remembered before you float and eased back as you land.
   if (floating && !farm.armRest) farm.armRest = FARM_ARM_BONES.map(n => [b.bones[n], b.bones[n].quaternion.clone()]);
@@ -2122,8 +2251,20 @@ function pickUse() {
     const d = Math.hypot(pl.cell.x + 0.5 - player.pos.x, pl.cell.z + 0.5 - player.pos.z);
     if (pl.grown && d < bd) { bd = d; best = pl; }
   }
-  if (best) return { kind: 'harvest', key: cellKey(best.cell), plot: best, cell: best.cell };
+  if (best) {
+    // Mac (Nov 22): close to several ripe plants, the button is the shears: tap, float up, then harvest with your finger. Nothing is cut for you.
+    // Not during the first goals, which teach the Harvest button.
+    if (!S.goals || S.goals.done) {
+      let ripe = 0; for (const pl of plots.values()) if (pl.grown && Math.hypot(pl.cell.x + 0.5 - player.pos.x, pl.cell.z + 0.5 - player.pos.z) < SHEARS_NEAR) ripe++;
+      if (ripe >= SHEARS_AT) return { kind: 'shears', key: 'shears' };
+    }
+    return { kind: 'harvest', key: cellKey(best.cell), plot: best, cell: best.cell };
+  }
   const c = facingCell(); const here = plots.get(cellKey(c));
+  if (tool === 'seeds' && (!S.goals || S.goals.done) && invCount(seedSel()) > 0) {   // Mac: near 3 or more empty tilled plots, the button is the seed bag
+    let empty = 0; for (const pl of plots.values()) if (!pl.save.crop && Math.hypot(pl.cell.x + 0.5 - player.pos.x, pl.cell.z + 0.5 - player.pos.z) < SHEARS_NEAR) empty++;
+    if (empty >= SHEARS_AT) return { kind: 'sow', key: 'sow' };
+  }
   if (tool === 'seeds' && here && !here.save.crop) return { kind: 'plant', key: cellKey(c), plot: here, cell: c };
   if (tool === 'seeds') {
     for (const pl of plots.values()) {
@@ -2144,6 +2285,26 @@ function damageText(worldPos, amount) {
 const cropIcon = {};
 // side-on pictures of every fish species (from the real models, tinted), head facing left; used by the catch card
 const fishIcon = {};
+// the pack's picture, for the Backpack button and the Wardrobe; one per colour, made once
+const packIcons = {};
+function packIcon(color, kind = 'day') {
+  const key = kind + color; if (packIcons[key]) return packIcons[key];
+  const cv = document.createElement('canvas'), R = 192;
+  const r = new THREE.WebGLRenderer({ canvas: cv, alpha: true, antialias: true, preserveDrawingBuffer: true });
+  r.setSize(R, R, false); r.outputColorSpace = THREE.SRGBColorSpace; r.setClearColor(0x000000, 0);
+  const sc = new THREE.Scene(); sc.add(new THREE.HemisphereLight(0xffffff, 0xb9a98a, 2.0)); const sun = new THREE.DirectionalLight(0xffffff, 2.2); sun.position.set(2.5, 4, 3); sc.add(sun);
+  const o = packModel(kind, color); o.rotation.y = -0.45; sc.add(o);
+  const cam = new THREE.PerspectiveCamera(26, 1, 0.01, 100); cam.position.set(0.4, 1.35, 4.6); cam.lookAt(0, 0.5, 0);
+  r.render(sc, cam); const flat = document.createElement('canvas'); flat.width = flat.height = R; flat.getContext('2d').drawImage(cv, 0, 0);
+  const url = trimTight(flat, 180); r.dispose(); r.forceContextLoss();
+  return (packIcons[key] = url);
+}
+// the Backpack button shows the pack you wear, in its colour (the plain icon if you wear none)
+function syncPackBtn() {
+  const btn = document.getElementById('packBtn'), L = S.look, col = L && BACKPACKS[L.pack] ? (L.packColor || '#f2a531') : '#f2a531', key = 'p' + col;
+  if (btn.dataset.pk === key) return; btn.dataset.pk = key;
+  btn.innerHTML = `<img src="${packIcon(col)}" alt="" draggable="false">`;
+}
 function renderFishIcons() {
   const cv = document.createElement('canvas'), R = 256;
   const r = new THREE.WebGLRenderer({ canvas: cv, alpha: true, antialias: true, preserveDrawingBuffer: true });
@@ -2238,7 +2399,7 @@ function updateCropTags() {
     const d = Math.hypot(p.g.position.x - player.pos.x, p.g.position.z - player.pos.z);
     const crop = CROPS[p.save.crop], left = p.save.plantedAt + growMs(p.save.crop) - Date.now();
     if (d > TAG_NEAR && left > 0) continue;   // timers only up close; a ripe crop's bubble shows at any distance
-    tagV.copy(p.g.position); tagV.y += 0.75; tagV.project(camera);
+    tagV.copy(p.g.position); tagV.y += plantLab().lift ? Math.max(0.75, Math.min(plantLab().liftMax, (p.top || 0) + 0.12)) : 0.75; tagV.project(camera);
     if (tagV.z > 1 || Math.abs(tagV.x) > 1.1 || Math.abs(tagV.y) > 1.1) continue;
     const mode = left <= 0 ? 'ready' : d <= TAG_NAME ? 'named' : 'time';
     let el = tagEls.get(k);
@@ -3449,14 +3610,21 @@ function renderMainMenu() {
     : 'A new harbor<br>Higgins will meet you on the beach';
   document.getElementById('mmContinue').textContent = started ? 'Continue' : 'Start';
   document.getElementById('mmNew').hidden = !started;
-  document.getElementById('mmDbgInfo').innerHTML = 'Separate test save \u00b7 skips the intro<br>Fast crops \u00b7 debug buttons in Settings';
+  document.getElementById('mmDbgInfo').innerHTML = 'Separate test save \u00b7 starts at level 5, goals done<br>Fast crops \u00b7 debug buttons in Settings';
   document.getElementById('mmVer').textContent = VERSION_LABEL;
 }
 function showMainMenu() { renderMainMenu(); document.body.classList.add('inmenu'); mm.hidden = false; }
 function startGame() {
   mm.hidden = true; document.body.classList.remove('inmenu');
   if (settings.debug) {
-    if (!S.introDone) { S.introDone = true; if (!S.kitGiven) giveStarterKit(); S.fishelMet = true; renderHotbar(); commit(); }
+    // a fresh debug harbor starts as if you'd played to level 5 and done the goals (Mac, v0.1.151: "It's a chore to skip that every time")
+    if (!S.introDone) {
+      S.introDone = true; if (!S.kitGiven) giveStarterKit(); S.fishelMet = true; S.rosaMet = true;
+      let xp = 0; for (let lv = 1; lv < DEBUG.startLevel; lv++) xp += xpToNext(lv);
+      S.xp = Math.max(S.xp || 0, xp); S.level = Math.max(S.level || 1, DEBUG.startLevel); S.xpSeeded = true;
+      if (!S.look) { S.look = { ...DEFAULT_LOOK }; paintPlayer(); syncPackBtn(); }   // and in the generic look, so the Wardrobe doesn't greet you (Mac: "default to generic look")
+      goals.debug('all'); ensureRosa(); renderLevel(); renderHotbar(); commit();
+    }
     toast('Debug harbor: test save');
   } else if (!S.introDone && S.look) setTimeout(runIntro, 600);
   if (!S.look) setTimeout(() => openWardrobe(true), 300);   // greet new players with the wardrobe first (Mac)
@@ -3494,7 +3662,7 @@ function toastNow(t) { const el = document.getElementById('mmVer'); const v = el
 const KIND_ORDER = { fish: 0, crop: 1, seed: 2, bait: 3, feed: 4, fert: 4, decor: 5 };
 function itemIcon(id) {
   const it = ITEMS[id], col = RARITY[it.rarity].color;
-  if (it.kind === 'crop') return `<span class="ic" style="background:${col}22;border:2px solid ${col}">${cropImg(id, 26)}</span>`;
+  if (it.kind === 'crop') { const sc = it.special ? SPECIAL[it.special].color : col; return `<span class="ic${it.special ? ' sp-' + it.special : ''}" style="background:${sc}22;border:2px solid ${sc}">${cropImg(it.base || id, 26)}</span>`; }
   if (it.kind === 'seed') return `<span class="ic seedpk">${cropImg(it.crop, 20)}</span>`;
   const k = it.kind === 'fish' ? 'fish' : it.kind === 'crop' ? 'fruit' : it.kind === 'bait' ? id : it.kind === 'feed' ? 'feed' : it.kind === 'fert' ? 'fert' : it.kind === 'decor' ? it.decor : 'seeds';
   return `<span class="ic" style="background:${col}22;border:2px solid ${col}">${svg(k, col, 22)}</span>`;
@@ -3503,13 +3671,27 @@ function renderBag() {
   document.getElementById('bagCoins').textContent = `${S.coins.toLocaleString()} coins`;
   const ids = Object.keys(S.inv).filter(id => ITEMS[id] && S.inv[id] > 0)
     .sort((a, b) => (KIND_ORDER[ITEMS[a].kind] - KIND_ORDER[ITEMS[b].kind]) || (RARITY_IDX[ITEMS[b].rarity] - RARITY_IDX[ITEMS[a].rarity]));
+  // crops: one row per crop with a dot for each colour you own; tap it and its kinds show underneath (bag A, Mac)
+  const kinds = {}; for (const id of ids) { const it = ITEMS[id]; if (it.kind === 'crop') (kinds[it.base || id] = kinds[it.base || id] || []).push(id); }
+  const seen = new Set();
   document.getElementById('bagList').innerHTML = ids.length ? ids.map(id => {
     const it = ITEMS[id], r = RARITY[it.rarity];
+    if (it.kind === 'crop') {
+      const base = it.base || id, grp = kinds[base]; if (seen.has(base)) return ''; seen.add(base);
+      if (grp.length > 1 || grp[0] !== base) {
+        const order = [base, ...Object.keys(SPECIAL).map(k => `${base}_${k}`)].filter(x => grp.includes(x)), total = order.reduce((t, x) => t + S.inv[x], 0), open = bagOpen === base;
+        const dots = order.filter(x => ITEMS[x].special).map(x => `<i class="spdot" style="background:${SPECIAL[ITEMS[x].special].color}"></i>`).join('');
+        return `<button class="row bgrp${open ? ' open' : ''}" data-grp="${base}">${itemIcon(base)}<div class="nm">${ITEMS[base].name}<small>${dots}</small></div><div class="ct">×${total}</div></button>`
+          + (open ? `<div class="bkinds">${order.map(x => `<div class="bkind${ITEMS[x].special ? ' sp-' + ITEMS[x].special : ''}">${itemIcon(x)}<b>${ITEMS[x].special ? SPECIAL[ITEMS[x].special].name : 'Plain'}</b><span>×${S.inv[x]}</span><small><span class="scoin sm"></span>${ITEMS[x].price}</small></div>`).join('')}</div>` : '');
+      }
+    }
     return `<div class="row">${itemIcon(id)}<div class="nm">${it.name}<small style="color:${r.color}">${it.kind === 'fish' || it.kind === 'crop' ? r.label + ' · ' + it.price + ' coins each' : it.kind === 'bait' ? 'Bait' : it.kind === 'feed' ? 'Animal feed' : it.kind === 'fert' ? `Makes a crop ${FERT.minutes} min faster` : it.kind === 'decor' ? 'Decor' : r.label}</small></div><div class="ct">×${S.inv[id]}</div></div>`;
   }).join('') : '<div class="empty">Your bag is empty. Go fishing or farming!</div>';
   document.getElementById('bagCollection').textContent = `Fish book: ${dex.foundCount()} of ${dex.totalCount()} found.`   /* FISHING */;
 }
 const RARITY_IDX = { common: 0, uncommon: 1, rare: 2, super: 3, legendary: 4 };
+let bagOpen = null;
+document.getElementById('bagList').addEventListener('click', (e) => { const b = e.target.closest('[data-grp]'); if (!b) return; bagOpen = bagOpen === b.dataset.grp ? null : b.dataset.grp; renderBag(); });
 
 // ---------- settings + debug mode ----------
 function renderSettings() {
@@ -3557,7 +3739,7 @@ document.querySelectorAll('[data-dbg]').forEach(b => b.addEventListener('click',
     if (!l) toast('Every lot is bought');
     else { const s = lotSignPos(); player.pos.set(s.x + 1.1, 0, s.z - 1.2); toast(`Next lot: ${LOT_NAMES[l.id]}, ${lotPrice().toLocaleString()} coins, level ${lotLevel()}`); }
   }
-  if (k === 'cargofill') { cargo.ensure(); if (S.level < CARGO.openLevel) { S.level = CARGO.openLevel; S.xp = Math.max(S.xp, 0); renderLevel(); } cargo.boxes().forEach((b, i) => { if (b.kind === 'star') { S.cargo.boxes[i] = { [S.cargo.star.item]: S.cargo.star.n }; } else S.cargo.boxes[i] = { [b.kind === 'crate' ? 'turnip' : 'sunfish']: cargo.capOf(b.kind, i) }; }); cargo.refresh(); commit(); toast('Hold filled'); }
+  if (k === 'cargofill') { cargo.ensure(); if (S.level < CARGO.openLevel) { S.level = CARGO.openLevel; S.xp = Math.max(S.xp, 0); renderLevel(); } cargo.boxes().forEach((b, i) => { if (b.kind === 'star' || b.kind === 'starb') { const st = b.kind === 'starb' ? S.cargo.starB : S.cargo.star; S.cargo.boxes[i] = { [st.item]: st.n }; } else S.cargo.boxes[i] = { [b.kind === 'crate' ? 'turnip' : 'sunfish']: cargo.capOf(b.kind, i) }; }); cargo.refresh(); commit(); toast('Hold filled'); }
   if (k === 'cargodemo') { const no = cargo.demoTrip(); if (no) toast(no); else { document.getElementById('settings').hidden = true; toast('Ship leaves in 5'); } }
   if (k === 'cargoback') { cargo.ensure(); if (S.cargo.back) { S.cargo.back = Date.now() - 1; cargo.stopSailing(); merchant.visible = false; commit(); toast('The ship is on its way back'); } else toast('The ship is at the dock'); }
   if (k === 'tools') { S.tools = [...GEAR_ORDER]; if (S.level < 3) { S.level = 3; renderLevel(); } commit(); renderFarmTray(); refreshDig(); toast('All tools added'); }
@@ -3577,7 +3759,8 @@ function rainWater() {
   for (const p of plots.values()) {
     if (!p.save.crop || p.grown) continue;
     const stg = stageOf(p); if (p.save.watered === stg) continue;
-    p.save.plantedAt -= WATER_MS; p.save.watered = stageOf(p) === stg ? stg : null; syncCrop(p); setWet(p); n++;
+    if (!p.save.wet1) { p.save.wet1 = 1; p.save.plantedAt -= WATER_MS; }   // once per crop, like the can
+    p.save.watered = stageOf(p) === stg ? stg : null; syncCrop(p); setWet(p); n++;
   }
   if (n) storeSave(S, settings.debug);
 }
@@ -4038,6 +4221,8 @@ function frame() {
   // main menu (v0.1.10, layout B) — skipped once right after picking a save from it
   let skip = false; try { skip = sessionStorage.getItem('tidewell.skipMenu') === '1'; sessionStorage.removeItem('tidewell.skipMenu'); } catch (e) {}
   if (skip) startGame(); else showMainMenu();
+  if (S.look && !S.look.blank && S.look.pack === undefined) { S.look.pack = 'day'; S.look.packColor = '#f2a531'; setLook(body, S.look); }   // v0.1.150: looks made before the backpack get one (take it off in the Wardrobe)
+  syncPackBtn();
   window.__ready = true;
   window.__tidewell = { sit, get pike() { return pike; }, get worldRod() { return worldRod; }, get rodState() { return rodState; }, scenery, pets, get merchant() { return merchant; }, THREE, scene, sun, hemi, TOD, camera, player, get S() { return S; }, fishing, settings, decor, cropIcon, farm, get body() { return body; }, fishIcon, spots, dex, tackle, reel, farmToolMesh, plots, lotView, get clr() { return clr; }, inRock, get dig() { return digModels; }, setLook: (l) => { for (const b of Object.values(bodies)) setLook(b, l); }, joy };   // used by tools/ (screenshots, tests)
   clock.getDelta();

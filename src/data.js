@@ -1,7 +1,7 @@
 // Tidewell game data. Everything tunable lives here as plain tables so it can be
 // exported to JSON for the Unity version later (see tools/export-data.mjs).
 
-export const VERSION = '0.1.140';
+export const VERSION = '0.1.154';
 export const VERSION_LABEL = 'BETA v' + VERSION;
 
 // Rarity tiers (decision 36). `weight` is the base chance per bite with worms.
@@ -111,6 +111,23 @@ export const inches = (m) => Math.max(1, Math.round(m * 39.37));
 // `size` scales the plant on its plot; `clump` plants that many thin stalks per plot.
 // Models: turnip from Kenney's Nature Kit, the rest from Quaternius's Nature Crops Pack (CC0).
 const Q = (name) => ({ kit: 'crops', stages: [1, 2, 3, 4].map(i => `${name}_${i}`), icon: ['crops', `${name}_crop`] });
+// Special crops (v0.1.144, Mac and his tester: big, coloured, shiny plants, each colour in its own stack).
+// oneIn: about one ripe crop in this many comes out that colour. mult: how many times the plain price it sells for.
+// Rolled once, when the crop turns ripe, rarest first. Starting numbers; tune with a balance bot.
+export const SPECIAL = {
+  silver:  { name: 'Silver',  oneIn: 10,  mult: 2,  rarity: 'uncommon', color: '#9aa6b8' },
+  frozen:  { name: 'Frozen',  oneIn: 10,  mult: 2,  rarity: 'uncommon', color: '#3aa0ff', winter: true },   // only crops that ripen in winter
+  gold:    { name: 'Gold',    oneIn: 30,  mult: 5,  rarity: 'rare',     color: '#e0a020' },
+  rainbow: { name: 'Rainbow', oneIn: 200, mult: 15, rarity: 'super',    color: '#e0409a' },
+};
+export const SPECIAL_RULES = {
+  order: ['rainbow', 'gold', 'frozen', 'silver'],   // rolled in this order; the first hit wins
+  watered: 2,        // gold and rainbow are this many times likelier on a crop that was watered (can, rain)
+  fertilized: 2,     // every colour is this many times likelier on a fertilized crop (Mac)
+  rain: 2,           // rainbow again this many times likelier if it is raining when the crop ripens
+  big: { oneIn: 7, extra: 1, scale: 1.35 },      // a big plant gives one more
+  giant: { oneIn: 100, times: 3, scale: 3 },   // a giant gives three times as many, with the pop and the arpeggio. v0.1.154 (Mac): huge and rare; was 1 in 30 at 1.75×
+};
 export const CROPS = {
   lettuce:    { name: 'Lettuce',    growMinutes: 8,  yield: [1, 2], ...Q('lettuce') },
   carrot:     { name: 'Carrot',     growMinutes: 10, yield: [1, 2], ...Q('carrot') },
@@ -167,6 +184,7 @@ for (const [id, c] of Object.entries(CROPS)) {
   c.seed = 'seed_' + id; c.item = id;
   ITEMS[c.seed] = { name: `${c.name} seeds`, kind: 'seed', rarity: 'common', price: Math.max(1, Math.round(seed * 0.4)), buy: seed, crop: id };
   ITEMS[id] = { name: c.name, kind: 'crop', rarity: 'common', price };
+  for (const [k, v] of Object.entries(SPECIAL)) ITEMS[`${id}_${k}`] = { name: `${v.name} ${c.name}`, kind: 'crop', rarity: v.rarity, price: price * v.mult, base: id, special: k };   // each colour is its own stack
 }
 
 // What a brand-new save starts with.
@@ -295,7 +313,7 @@ export function unlockLevel(item) {
 }
 
 // Debug-mode speedups.
-export const DEBUG = { cropSeconds: 15, biteSeconds: 0.6, orderRefillSeconds: 10 };
+export const DEBUG = { cropSeconds: 15, biteSeconds: 0.6, orderRefillSeconds: 10, startLevel: 5 };
 
 // Pick a fish for a bite. `bait` = a BAIT key, `tod` = time of day key,
 // `rand` = a function returning 0..1 (seedable for the test bot),
@@ -400,9 +418,11 @@ export const PETS = {
     cat: { level: 1, bed: 'catbed', bedName: 'Cat basket', length: 1.2, coat: 'tabby', worms: false, fish: true,
       names: ['Mittens', 'Shadow', 'Pepper', 'Socks', 'Olive', 'Tux', 'Luna', 'Boots', 'Smokey', 'Misty', 'Domino', 'Figaro'] },
   },
-  // winning the stray cat over (Mac: about 3 days): a treat or a common fish is 1 point (3 a day), a pet is 1 point (once a day);
-  // 2 points fill a paw, 5 paws and it's yours. Points never go down.
-  tame: { paws: 5, perPaw: 2, treatsPerDay: 3, petsPerDay: 1 },
+  // winning the stray cat over (Mac: about a week; about 3 days until v0.1.153): a treat or a common fish is 1 point (3 a day), a pet is 1 point (once a day);
+  // 5 points fill a heart (was 2 until v0.1.153: Mac wanted about a week, not 3 days), 5 hearts and it's yours. Points never go down.
+  // The stray keeps its distance (Mac, v0.1.153: "I don't want the cat to follow the player so easily"): from `comeAt` hearts it walks over, but only
+  // while you stand still within `comeNear` m; from `tagAt` hearts it tags along for `tagFor` s, then leaves you alone for `tagRest` s.
+  tame: { paws: 5, perPaw: 5, treatsPerDay: 3, petsPerDay: 1, comeAt: 1, comeNear: 3, tagAt: 4, tagFor: 6, tagRest: 30 },
 };
 
 // Fertilizer (decision 89, mockup A): bought from Rosa with coins, dragged over crops from Farm tools; one bag takes `minutes` off one crop.

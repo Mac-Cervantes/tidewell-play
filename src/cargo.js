@@ -17,14 +17,17 @@ export function createCargo(A) {
   // Crates take crops, barrels take fish: load anything until they're full. The star crate asks for something in
   // particular and brings a treasure chest. Send the ship and it's gone for a while; it sells everything for more
   // than Higgins pays and comes back with the coins (and the chest).
-  let cargoReady = false, cargoModels = [], chestModel = null, shipAnim = null;
+  let cargoReady = false, cargoModels = [], chestModel = null, shipAnim = null, arriving = false;   // arriving: sailing back in; the pay chest waits until it has tied up
   const cargoBubEl = document.getElementById('cargoBubbles');
   const cargoOpen = () => S.level >= CARGO.openLevel;
   // each crate or barrel on the dock: { kind, lv }. S.cargo.boxes holds what's loaded, one entry per slot, then the star crate last.
-  function cargoBoxes() { return [...S.cargo.slots.map(s => ({ kind: s.kind, lv: s.lv })), { kind: 'star' }]; }
+  // v0.1.142 (Mac): two star requests by the ship, a star crate (a crop) and a star barrel (a fish). They are the last two boxes.
+  const isStar = k => k === 'star' || k === 'starb';
+  const starOf = k => (k === 'starb' ? S.cargo.starB : S.cargo.star);
+  function cargoBoxes() { return [...S.cargo.slots.map(s => ({ kind: s.kind, lv: s.lv })), { kind: 'star' }, { kind: 'starb' }]; }
   const nextBox = () => (S.cargo ? CARGO.more[S.cargo.slots.length - CARGO.start.length] : null) || null;   // the next one you can buy, or null
-  function newStar() {
-    const pool = ORDERS.wants.filter(w => ITEMS[w.item].kind !== 'crop' || unlockLevel('seed_' + w.item) <= S.level);
+  function newStar(what) {   // what: 'crop' for the star crate, 'fish' for the star barrel
+    const pool = ORDERS.wants.filter(w => ITEMS[w.item].kind === what && (what !== 'crop' || unlockLevel('seed_' + w.item) <= S.level));
     const w = pool[Math.floor(Math.random() * pool.length)];
     return { item: w.item, n: Math.max(2, Math.min(5, w.n[0] + Math.floor(Math.random() * 3))) };
   }
@@ -35,25 +38,44 @@ export function createCargo(A) {
       S.cargo.slots = [...Array(h.crates).fill('crate'), ...Array(h.barrels).fill('barrel')].map(kind => ({ kind, lv }));
       delete S.cargo.hold;
     }
-    const n = S.cargo.slots.length + 1;
-    // keep what's loaded when a crate is added; the star crate is always last
-    const old = S.cargo.boxes || [], starLoad = old.length ? old[old.length - 1] : {};
-    const body = old.slice(0, Math.max(0, old.length - 1));
-    S.cargo.boxes = [...Array(n - 1)].map((_, i) => body[i] || {}).concat([starLoad || {}]);
-    if (!S.cargo.star) S.cargo.star = newStar();
+    // keep what's loaded when a crate is added; the two star boxes are always last
+    const old = S.cargo.boxes || [], tail = S.cargo.stars2 ? 2 : 1;
+    const body = old.slice(0, Math.max(0, old.length - tail));
+    let loads = old.length >= tail ? old.slice(old.length - tail) : [];
+    if (!S.cargo.stars2) {   // a save with one star crate: a fish request moves to the new star barrel, with what's in it
+      const fish = S.cargo.star && ITEMS[S.cargo.star.item] && ITEMS[S.cargo.star.item].kind === 'fish';
+      if (fish) { S.cargo.starB = S.cargo.star; S.cargo.star = null; loads = [{}, loads[0] || {}]; } else loads = [loads[0] || {}, {}];
+      S.cargo.stars2 = true;
+    }
+    S.cargo.boxes = [...Array(S.cargo.slots.length)].map((_, i) => body[i] || {}).concat([loads[0] || {}, loads[1] || {}]);
+    if (!S.cargo.star) S.cargo.star = newStar('crop');
+    if (!S.cargo.starB) S.cargo.starB = newStar('fish');
   }
   const boxCount = (b) => Object.values(b || {}).reduce((t, n) => t + n, 0);
-  const capOf = (kind, i) => kind === 'star' ? S.cargo.star.n : CARGO.caps[(S.cargo.slots[i] ? S.cargo.slots[i].lv : 1) - 1];
+  const capOf = (kind, i) => isStar(kind) ? starOf(kind).n : CARGO.caps[(S.cargo.slots[i] ? S.cargo.slots[i].lv : 1) - 1];
   // crops in crates, fish in barrels, and one kind of thing per crate or barrel until it's empty again (Mac)
-  const fits = (kind, id, b) => { const inIt = Object.keys(b || {}).filter(k => b[k] > 0); if (kind !== 'star' && inIt.length && !inIt.includes(id)) return false;
-    return kind === 'star' ? id === S.cargo.star.item : kind === 'crate' ? ITEMS[id].kind === 'crop' : ITEMS[id].kind === 'fish'; };
-  const shipAway = () => S.cargo && S.cargo.back > 0;
+  const baseOf = id => (ITEMS[id] && ITEMS[id].base) || id;   // Gold Tomato and Tomato share a crate (Mac, v0.1.144); the star boxes stay plain-only
+  const fits = (kind, id, b) => { const inIt = Object.keys(b || {}).filter(k => b[k] > 0); if (!isStar(kind) && inIt.length && !inIt.map(baseOf).includes(baseOf(id))) return false;
+    return isStar(kind) ? id === starOf(kind).item : kind === 'crate' ? ITEMS[id].kind === 'crop' : ITEMS[id].kind === 'fish'; };
+  const shipAway = () => S.cargo && (S.cargo.back > 0 || arriving);
   const cargoLoaded = () => S.cargo && S.cargo.boxes.some(b => boxCount(b) > 0);
   // crates down both sides of the dock, small picture bubbles, and the full bubble on the crate you stand at (mockup C, v0.1.81); window.__cargoLab overrides for mockups
   const cargoLab = () => ({ zig: 1, sm: 1, focus: 1, gap: 1.15, ...(window.__cargoLab || {}) });
   function spotPos(p) { const L = cargoLab(); return { x: DOCK.x + (p % 2 ? -1 : 1) * (DOCK.half - 0.39), z: DOCK.zFar + 1.7 + p * L.gap }; }
-  function boxPos(i) { return spotPos(S.cargo && i >= S.cargo.slots.length ? 0 : i + 1); }   // the star crate stands nearest the ship
-  const nextPos = () => spotPos(S.cargo.slots.length + 1);
+  // the two star boxes stand nearest the ship. STAR_SPOTS: 'zig' = one each side, staggered like the rest · 'row' = one each side, level with each other ·
+  // 'mid' = side by side across the end of the dock, in front of the ship. window.__cargoLab.stars overrides for mockups.
+  const STAR_SPOTS = 'row';   // Mac picked B (Nov 21)
+  function boxPos(i) {
+    const n = S.cargo ? S.cargo.slots.length : 0, L = cargoLab(), m = L.stars || STAR_SPOTS;
+    if (i < n) return plainPos(i);
+    const j = i - n;   // 0 the star crate, 1 the star barrel
+    if (m === 'mid') return { x: DOCK.x + (j ? -0.42 : 0.42), z: DOCK.zFar + 0.75 };
+    if (m === 'row') return { x: DOCK.x + (j ? -1 : 1) * (DOCK.half - 0.39), z: DOCK.zFar + 1.7 };
+    return spotPos(j);
+  }
+  // your own crates and barrels, working back toward the beach. With the stars in a row, the first one stands a gap and a half behind them.
+  function plainPos(i) { const L = cargoLab(); if ((L.stars || STAR_SPOTS) !== 'row') return spotPos(i + 2); return { x: DOCK.x + (i % 2 ? 1 : -1) * (DOCK.half - 0.39), z: DOCK.zFar + 1.7 + (i + 1.5) * L.gap }; }
+  const nextPos = () => plainPos(S.cargo.slots.length);
   function buildCargo() { cargoReady = true; refreshCargo(true); }
   function refreshCargo(first) {
     if (!cargoReady) return;
@@ -64,10 +86,10 @@ export function createCargo(A) {
     if (kinds.join() + lvs.join() !== cargoModels.map(o => o.userData.kind).join() + cargoModels.map(o => o.userData.lv).join()) {
       cargoModels.forEach(o => scene.remove(o)); cargoModels = [];
       kinds.forEach((k, i) => {
-        const p = boxPos(i), o = place('pirate', k === 'barrel' ? 'barrel' : k === 'star' ? 'crate-bottles' : 'crate', p.x, p.z, { r: (i % 3 - 1) * 0.08, s: k === 'star' ? 0.62 : 0.5 + 0.07 * lvs[i] });   // a higher level is a bigger crate
+        const p = boxPos(i), o = place('pirate', k === 'barrel' || k === 'starb' ? 'barrel' : k === 'star' ? 'crate-bottles' : 'crate', p.x, p.z, { r: (i % 3 - 1) * 0.08, s: isStar(k) ? 0.62 : 0.5 + 0.07 * lvs[i] });   // a higher level is a bigger crate
         o.position.y = DOCK_FLOOR + 0.02; o.userData.kind = k; o.userData.lv = lvs[i]; cargoModels.push(o);
       });
-      cargoBubEl.innerHTML = kinds.map((k, i) => `<div class="cb ${k}" data-i="${i}"><div class="cbb"></div><div class="cbt"></div></div>`).join('');
+      cargoBubEl.innerHTML = kinds.map((k, i) => `<div class="cb ${isStar(k) ? 'star' : k}" data-i="${i}" data-k="${k}"><div class="cbb"></div><div class="cbt"></div></div>`).join('');
     }
     // the ship: at the dock, away, or sailing between
     if (A.merchant) {
@@ -93,14 +115,14 @@ export function createCargo(A) {
   let ghostBox = null;
   const ghostMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.32, depthWrite: false });
   function boxIcon(kind, b) {
-    if (kind === 'star') return `<span class="cstar">★</span>${itemIcon(S.cargo.star.item)}`;
+    if (isStar(kind)) return `<span class="cstar">★</span>${itemIcon(starOf(kind).item)}`;
     const top = Object.entries(b).sort((x, y) => y[1] - x[1])[0];
     return top ? itemIcon(top[0]) : `<span class="ic cbx">${svg(kind === 'barrel' ? 'barrel' : 'crate', '#8a5a34', 22)}</span>`;
   }
   function renderCargoBubbles() {
     if (!S.cargo) return;
     cargoBubEl.querySelectorAll('.cb').forEach(el => {
-      const i = +el.dataset.i, k = el.classList.contains('star') ? 'star' : el.classList.contains('barrel') ? 'barrel' : 'crate';
+      const i = +el.dataset.i, k = el.dataset.k;
       const b = S.cargo.boxes[i] || {}, n = boxCount(b), cap = capOf(k, i), full = n >= cap, lv = S.cargo.slots[i] ? S.cargo.slots[i].lv : 0;
       el.classList.toggle('full', full);
       el.querySelector('.cbb').innerHTML = `${boxIcon(k, b)}<span class="cbar"><i style="width:${Math.min(100, Math.round(100 * n / cap))}%"></i></span><b>${n}/${cap}</b>${full ? '<span class="cok">✓</span>' : ''}${lv ? `<span class="clv">${'<i></i>'.repeat(lv)}</span>` : ''}`;
@@ -111,8 +133,9 @@ export function createCargo(A) {
     const pay = document.getElementById('cargoPay');
     const p = S.cargo.payout;
     pay.hidden = !(p && !shipAway());
-    if (p) pay.querySelector('.cbb').innerHTML = `<span class="scoin"></span><b>+${p.coins.toLocaleString()}</b>${p.extra ? `<span class="cstar">★</span>${itemIcon(p.extra.item)}<b>×${p.extra.n}</b>` : ''}`;
+    if (p) pay.querySelector('.cbb').innerHTML = `<span class="scoin"></span><b>+${p.coins.toLocaleString()}</b>${prizes(p).map(x => `<span class="cstar">★</span>${itemIcon(x.item)}<b>×${x.n}</b>`).join('')}`;
   }
+  const prizes = p => (p.extras || (p.extra ? [p.extra] : []));   // one treasure per star box that was full (older saves: one `extra`)
   const _cb = new THREE.Vector3();
   function placeBubble(el, x, y, z, lift, dx = 0) {
     _cb.set(x, y, z).project(camera);
@@ -145,8 +168,8 @@ export function createCargo(A) {
     tickDemo(dt);
     // the trip: once it's time, the ship sails back in and the pay waits in a chest on the dock
     if (shipAway() && Date.now() >= S.cargo.back && !shipAnim && !demo) {
-      S.cargo.back = 0; commit();
-      A.merchant.visible = true; audio.shipBell(); shipAnim = { t: 0, dur: 7, from: SHIP_IN, to: SHIP_AT, done: () => { refreshCargo(); toast('The cargo ship is back! Your pay is on the dock.'); } };
+      S.cargo.back = 0; arriving = true; commit();
+      A.merchant.visible = true; audio.shipBell(); shipAnim = { t: 0, dur: 7, from: SHIP_IN, to: SHIP_AT, done: () => { arriving = false; refreshCargo(); toast('The cargo ship is back! Your pay is on the dock.'); } };
     }
     waterUniforms.uRing.value = A.merchant && A.merchant.visible && !shipAnim ? 1 : 0;   // rings only around the ship at rest
     if (shipAnim) {
@@ -182,19 +205,21 @@ export function createCargo(A) {
   function openCargo(i) { cargoAt = i; renderCargo(); openSheet('cargoSheet'); }
   function renderCargo() {
     const kind = cargoBoxes()[cargoAt].kind, b = S.cargo.boxes[cargoAt], n = boxCount(b), cap = capOf(kind, cargoAt), slot = S.cargo.slots[cargoAt];
-    const title = kind === 'star' ? 'Star crate' : `${kind === 'barrel' ? 'Barrel' : 'Crate'} <span class="cglv">Level ${slot.lv}<span class="clv">${'<i></i>'.repeat(slot.lv)}${'<i class="off"></i>'.repeat(CARGO.caps.length - slot.lv)}</span></span>`;
-    document.getElementById('cgIcon').innerHTML = kind === 'star' ? `<span class="cstar big">★</span>` : svg(kind === 'barrel' ? 'barrel' : 'crate', '#8a5a34', 30);
+    const title = isStar(kind) ? (kind === 'starb' ? 'Star barrel' : 'Star crate') : `${kind === 'barrel' ? 'Barrel' : 'Crate'} <span class="cglv">Level ${slot.lv}<span class="clv">${'<i></i>'.repeat(slot.lv)}${'<i class="off"></i>'.repeat(CARGO.caps.length - slot.lv)}</span></span>`;
+    document.getElementById('cgIcon').innerHTML = isStar(kind) ? `<span class="cstar big">★</span>` : svg(kind === 'barrel' ? 'barrel' : 'crate', '#8a5a34', 30);
     document.getElementById('cgTitle').innerHTML = title;
     document.getElementById('cgBar').innerHTML = `<span class="cbar"><i style="width:${Math.min(100, Math.round(100 * n / cap))}%"></i></span><b>${n}/${cap}</b>`;
-    document.getElementById('cgHint').innerHTML = kind === 'star' ? `Wants ${S.cargo.star.n} ${ITEMS[S.cargo.star.item].name}. Fill it for a treasure chest!` : n ? `This one is for ${ITEMS[Object.keys(b).find(k => b[k] > 0)].name} until it\u2019s empty again. Tap to drop one in, hold to fill it.` : kind === 'barrel' ? 'One kind of fish per barrel. Tap to drop one in, hold to fill it.' : 'One kind of crop per crate. Tap to drop one in, hold to fill it.';
+    { const val = Object.entries(b).reduce((t, [id, k]) => t + ITEMS[id].price * k, 0), el = document.getElementById('cgVal'); el.hidden = isStar(kind) || !n; const up = val - (el.dataset.v || 0);
+      el.innerHTML = `<span>This crate</span><span class="scoin"></span><b>${Math.round(val * CARGO.payMult).toLocaleString()}</b>${up > 0 && el.dataset.at === String(cargoAt) ? `<i>+${Math.round(up * CARGO.payMult).toLocaleString()}</i>` : ''}`; el.dataset.v = val; el.dataset.at = cargoAt; }
+    document.getElementById('cgHint').innerHTML = isStar(kind) ? `Wants ${starOf(kind).n} ${ITEMS[starOf(kind).item].name}. Fill it for a treasure chest!` : n ? `This one is for ${ITEMS[baseOf(Object.keys(b).find(k => b[k] > 0))].name} (any kind) until it\u2019s empty again. Tap to drop one in, hold to fill it.` : kind === 'barrel' ? 'One kind of fish per barrel. Tap to drop one in, hold to fill it.' : 'One kind of crop per crate. Tap to drop one in, hold to fill it.';
     const mine = Object.keys(S.inv).filter(id => ITEMS[id] && S.inv[id] > 0 && fits(kind, id, b));
     document.getElementById('cgHave').innerHTML = mine.length ? mine.map(id => `<button class="cgt" data-add="${id}">${itemIcon(id)}<b>×${S.inv[id]}</b></button>`).join('')
-      : `<div class="cgnone">${kind === 'star' ? `You don't have any ${ITEMS[S.cargo.star.item].name} yet` : n ? 'Nothing more of that kind in your bag' : kind === 'barrel' ? 'No fish in your bag' : 'No crops in your bag'}</div>`;
+      : `<div class="cgnone">${isStar(kind) ? `You don't have any ${ITEMS[starOf(kind).item].name} yet` : n ? 'Nothing more of that kind in your bag' : kind === 'barrel' ? 'No fish in your bag' : 'No crops in your bag'}</div>`;
     const inIt = Object.keys(b).filter(id => b[id] > 0);
     document.getElementById('cgIn').innerHTML = inIt.length ? inIt.map(id => `<button class="cgt in" data-take="${id}">${itemIcon(id)}<b>×${b[id]}</b></button>`).join('') : '<div class="cgnone">Empty</div>';
     const send = document.getElementById('cgSend'), away = shipAway();
     send.disabled = away || !cargoLoaded() || !!S.cargo.payout;
-    send.textContent = away ? `The ship is away · back in ${fmtTrip(S.cargo.back - Date.now())}` : S.cargo.payout ? 'Collect your pay first' : 'Send the ship ⛵';
+    send.textContent = arriving ? 'The ship is sailing in' : away ? `The ship is away · back in ${fmtTrip(S.cargo.back - Date.now())}` : S.cargo.payout ? 'Collect your pay first' : 'Send the ship ⛵';
     // level up this crate or barrel: coins + a town level
     const up = document.getElementById('cgUp'), lu = slot ? CARGO.levelUp[slot.lv - 1] : null;
     up.hidden = !lu;
@@ -228,8 +253,8 @@ export function createCargo(A) {
     if (shipAway() || !cargoLoaded() || S.cargo.payout) return;
     let value = 0;
     S.cargo.boxes.forEach(b => { for (const [id, n] of Object.entries(b)) value += ITEMS[id].price * n; });
-    const starFull = boxCount(S.cargo.boxes[S.cargo.boxes.length - 1]) >= S.cargo.star.n;
-    S.cargo.payout = { coins: Math.max(5, Math.round(value * CARGO.payMult)), extra: starFull ? chestPrize() : null };
+    const extras = []; cargoBoxes().forEach((bx, i) => { if (isStar(bx.kind) && boxCount(S.cargo.boxes[i]) >= starOf(bx.kind).n) extras.push(chestPrize()); });   // one prize per full star box (Mac)
+    S.cargo.payout = { coins: Math.max(5, Math.round(value * CARGO.payMult)), extras };
     S.cargo.boxes = S.cargo.boxes.map(() => ({}));
     const ms = settings.debug && settings.fastCrops ? CARGO.debugTripSeconds * 1000 : CARGO.tripMinutes * 60000;
     S.cargo.back = Date.now() + ms;
@@ -246,11 +271,12 @@ export function createCargo(A) {
   }
   function collectCargo() {
     const p = S.cargo && S.cargo.payout; if (!p) return;
-    S.coins += p.coins; audio.play('coins'); if (p.extra) addItem(p.extra.item, p.extra.n);
-    S.cargo.payout = null; S.cargo.star = newStar();
+    const won = prizes(p);
+    S.coins += p.coins; audio.play('coins'); won.forEach(x => addItem(x.item, x.n));
+    S.cargo.payout = null; S.cargo.star = newStar('crop'); S.cargo.starB = newStar('fish');
     addXP(XP.order);
     refreshCargo(); commit();
-    toast(`+${p.coins.toLocaleString()} coins${p.extra ? ` and ${p.extra.n} × ${ITEMS[p.extra.item].name}` : ''}!`);
+    toast(`+${p.coins.toLocaleString()} coins${won.map(x => ` and ${x.n} × ${ITEMS[x.item].name}`).join('')}!`);
   }
   // --- level up a crate or barrel, and buy the next one for the dock (coins + town level, like the lots) ---
   document.getElementById('cgUp').addEventListener('click', () => {
