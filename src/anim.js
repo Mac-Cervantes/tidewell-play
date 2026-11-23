@@ -578,6 +578,104 @@ function straightFeet(b, wRun) {
   }
 }
 
+// ---- sitting cross-legged (try/sit) ----
+// A hand-made pose on the dummy's own bones, built once from its straight bind pose (facing +z, its left
+// at +x): thighs out and forward, shins crossed in front, the seat on the grass, then the arms in one of
+// three ways. setSit() eases the body down and back up; sitPose() runs after posture().
+// arms: 'knees' (hands resting on the knees), 'lap' (hands in the lap), 'back' (leaning back on the hands)
+export const SITS = { knees: { arms: 'knees', lean: 0.12 }, lap: { arms: 'lap', lean: 0.08 }, back: { arms: 'back', lean: -0.32 } };
+const SIT_KNEE = 0.08, LAP_GAP = 0.16;   // how far the thighs tip up (+) or down (-)
+export const SIT_SPEED = { down: 0.2, up: 0.18 };   // Mac picked E   // seconds to sit down / get up
+export function initSit(b, dummy, kind = 'knees') {
+  const P = b.puppet, o = SITS[kind]; if (!P || !o) return;
+  // halfway pose: a squat, knees forward and a little apart, so he goes down before crossing his legs
+  const q = dummy.scene.clone(true); q.position.set(0, 0, 0); q.rotation.set(0, 0, 0); q.scale.set(1, 1, 1); q.updateMatrixWorld(true);
+  {
+    const by = (n) => q.getObjectByName(n), wp = (x) => x.getWorldPosition(new THREE.Vector3()), wq = (x) => x.getWorldQuaternion(new THREE.Quaternion());
+    const V = (x, y, z) => new THREE.Vector3(x, y, z).normalize();
+    const aim = (bone, child, dir) => { const R = new THREE.Quaternion().setFromUnitVectors(wp(child).sub(wp(bone)).normalize(), dir); bone.quaternion.copy(wq(bone.parent).invert().multiply(R.multiply(wq(bone)))); bone.updateMatrixWorld(true); };
+    const g0 = Math.min(wp(by('LeftToes_end') || by('LeftFoot')).y, wp(by('RightToes_end') || by('RightFoot')).y);
+    const hip = by('Hips'), h0 = wp(hip), seat = h0.clone(); seat.y = g0 + (h0.y - g0) * 0.5; seat.z -= (h0.y - g0) * 0.12;
+    hip.position.copy(hip.parent.worldToLocal(seat)); q.updateMatrixWorld(true);
+    for (const [side, sg] of [['Left', 1], ['Right', -1]]) {
+      aim(by(side + 'UpLeg'), by(side + 'Leg'), V(sg * 0.3, -0.45, 0.85));
+      aim(by(side + 'Leg'), by(side + 'Foot'), V(sg * 0.05, -0.95, -0.25));
+      const arm = by(side + 'Arm'), fore = by(side + 'ForeArm'), hand = by(side + 'Hand');
+      aim(arm, fore, V(sg * 0.3, -0.85, 0.4)); aim(fore, hand, V(sg * 0.1, -0.6, 0.8));
+    }
+    const tb = by('Spine'); tb.quaternion.copy(wq(tb.parent).invert().multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), 0.3).multiply(wq(tb)))); tb.updateMatrixWorld(true);
+  }
+  const s = dummy.scene.clone(true); s.position.set(0, 0, 0); s.rotation.set(0, 0, 0); s.scale.set(1, 1, 1); s.updateMatrixWorld(true);
+  const by = (n) => s.getObjectByName(n), wp = (x) => x.getWorldPosition(new THREE.Vector3()), wq = (x) => x.getWorldQuaternion(new THREE.Quaternion());
+  const V = (x, y, z) => new THREE.Vector3(x, y, z).normalize();
+  const aim = (bone, child, dir) => {   // turn bone so bone->child points along dir (world)
+    const R = new THREE.Quaternion().setFromUnitVectors(wp(child).sub(wp(bone)).normalize(), dir);
+    bone.quaternion.copy(wq(bone.parent).invert().multiply(R.multiply(wq(bone)))); bone.updateMatrixWorld(true);
+  };
+  const tilt = (bone, ang) => { const R = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), ang); bone.quaternion.copy(wq(bone.parent).invert().multiply(R.multiply(wq(bone)))); bone.updateMatrixWorld(true); };
+  const ground = Math.min(wp(by('LeftToes_end') || by('LeftFoot')).y, wp(by('RightToes_end') || by('RightFoot')).y);
+  const hip = by('Hips'), hip0 = wp(hip), legLen = hip0.y - ground;
+  // seat on the grass: the hips drop to about a fifth of their standing height
+  const seat = hip0.clone(); seat.y = ground + legLen * 0.2;
+  hip.position.copy(hip.parent.worldToLocal(seat.clone())); s.updateMatrixWorld(true);
+  for (const [side, sg] of [['Left', 1], ['Right', -1]]) {
+    const up = by(side + 'UpLeg'), leg = by(side + 'Leg'), foot = by(side + 'Foot'), toe = by(side + 'Toes_end') || by(side + 'Toes');
+    const front = sg > 0 ? 0.08 : 0;   // the left shin crosses in front of the right one
+    aim(up, leg, V(sg * 0.86, SIT_KNEE, 0.48 + front));   // knees wide, a little off the grass: a knee tipped down shows its dark underside at night (Mac)
+    aim(leg, foot, V(-sg * 0.93, -0.24 - SIT_KNEE + front * 0.6, -0.12 + front));
+    if (toe) aim(foot, toe, V(-sg * 0.55, -0.35, 0.75));
+  }
+  tilt(by('Spine'), o.lean); tilt(by('Head'), -o.lean * 0.6);
+  for (const [side, sg] of [['Left', 1], ['Right', -1]]) {
+    const arm = by(side + 'Arm'), fore = by(side + 'ForeArm'), hand = by(side + 'Hand');
+    if (o.arms === 'knees') {
+      const knee = wp(by(side + 'Leg')); knee.y += legLen * 0.12;   // rest the hand on top of the knee
+      aim(arm, fore, V(sg * 0.35, -0.8, 0.45));
+      aim(fore, hand, knee.sub(wp(fore)).normalize());
+    } else if (o.arms === 'lap') {
+      // fists side by side in the lap, not through each other (Mac): each wrist stops short of the middle
+      const spot = new THREE.Vector3(sg * legLen * LAP_GAP, seat.y + legLen * 0.14, seat.z + legLen * 0.4);
+      aim(arm, fore, V(sg * 0.42, -0.85, 0.3));
+      aim(fore, hand, spot.sub(wp(fore)).normalize());
+    } else {   // palms on the grass behind, a little out to the side
+      const spot = new THREE.Vector3(sg * legLen * 0.66, ground + legLen * 0.03, seat.z - legLen * 0.5);   // wide enough that the arms clear the backpack
+      aim(arm, fore, V(sg * 0.55, -0.75, -0.45));
+      aim(fore, hand, spot.sub(wp(fore)).normalize());
+    }
+  }
+  const pose = [];
+  s.traverse(x => { if (!x.isBone || /Hand(Thumb|Index)/.test(x.name)) return; const t = P.k.getObjectByName(x.name), m = q.getObjectByName(x.name); if (t) pose.push({ t, q: x.quaternion.clone(), mid: m.quaternion.clone() }); });
+  const low = ['LeftToes_end', 'RightToes_end', 'LeftFoot', 'RightFoot', 'LeftLeg', 'RightLeg'].map(n => P.k.getObjectByName(n)).filter(Boolean);
+  b.sit = { pose, hips: hip.position.clone(), midHips: q.getObjectByName('Hips').position.clone(), w: 0, to: 0, kind, ground, low, down: SIT_SPEED.down, up: SIT_SPEED.up };
+}
+// ease toward sitting (on) or standing (off); returns true while sitting or moving between the two
+export function setSit(b, on) { if (b.sit) b.sit.to = on ? 1 : 0; }
+export const sitting = (b) => !!(b.sit && (b.sit.w > 0.001 || b.sit.to > 0));
+export function sitPose(b, dt) {
+  const S = b.sit; if (!S) return;
+  const sp = S.to > S.w ? 1 / S.down : 1 / S.up;   // SIT_SPEED
+  S.w = S.to > S.w ? Math.min(S.to, S.w + sp * dt) : Math.max(S.to, S.w - sp * dt);
+  if (S.w < 0.001) return;
+  const P = b.puppet, sm = (x) => x * x * (3 - 2 * x);
+  // first half: from standing (whatever the clips give) down into the squat; second half: squat -> cross-legged
+  if (S.w < 0.5) {
+    const e = sm(S.w * 2);
+    for (const { t, mid } of S.pose) t.quaternion.slerp(mid, e);
+    P.hipT.position.lerp(S.midHips, e);
+  } else {
+    const e = sm((S.w - 0.5) * 2);
+    for (const { t, q, mid } of S.pose) t.quaternion.copy(mid).slerp(q, e);
+    P.hipT.position.copy(S.midHips).lerp(S.hips, e);
+  }
+  P.k.updateMatrixWorld(true);
+  // halfway down the legs are still fairly straight: never let the feet or knees sink into the grass
+  let lo = Infinity; for (const x of S.low) lo = Math.min(lo, P.k.worldToLocal(x.getWorldPosition(_v)).y);
+  if (lo < S.ground) {
+    const h = P.hipT, at = P.k.worldToLocal(h.getWorldPosition(_v)); at.y += S.ground - lo;
+    h.position.copy(h.parent.worldToLocal(P.k.localToWorld(at))); P.k.updateMatrixWorld(true);
+  }
+}
+
 // NPCs: lean into the talking loop while the player chats with them
 export function setTalk(b, on, amount = 1) { if (b.gait) b.gait.talkTo = on ? amount : 0; }
 // an NPC standing at its post: idle only (breathing), one call per frame instead of mixer.update

@@ -623,13 +623,30 @@ function draw(size, fn) { const c = document.createElement('canvas'); c.width = 
 function birdPicture(chick, duck) {
   const key = 'b' + chick + !!duck;
   return pics[key] || (pics[key] = draw(128, k => {
-    k.translate(58, chick ? 92 : 98); k.scale(chick ? 1.25 : 1.75, chick ? 1.25 : 1.75); k.lineWidth = 3;
-    k.strokeStyle = '#f29b2c'; k.beginPath(); k.moveTo(-6, 0); k.lineTo(-6, 9); k.moveTo(6, 0); k.lineTo(6, 9); k.moveTo(-10, 9); k.lineTo(-3, 9); k.moveTo(2, 9); k.lineTo(9, 9); k.stroke();
-    k.strokeStyle = '#2b2140'; k.fillStyle = chick ? ANIMALS.chickColor : '#fffaf0';
-    const body = new Path2D('M-26 -22 q-6 -16 6 -12 q10 -8 30 -2 q2 -8 12 -8 q12 0 12 12 q0 8 -6 12 q-2 20 -24 20 q-26 0 -30 -22z'); k.fill(body); k.stroke(body);
-    if (!chick && !duck) { k.fillStyle = '#e2463c'; const comb = new Path2D('M18 -30 q3 -8 6 0 q3 -8 6 0 q3 -6 5 2z'); k.fill(comb); k.stroke(comb); k.beginPath(); k.ellipse(33, -14, 3, 5, 0, 0, 6.3); k.fill(); k.stroke(); }
-    k.fillStyle = '#f29b2c'; const beak = new Path2D(duck ? 'M33 -27 h13 q5 3 0 7 h-13z' : 'M34 -24 l10 3 -10 4z'); k.fill(beak); k.stroke(beak);
-    k.fillStyle = '#2b2140'; k.beginPath(); k.arc(26, -24, 2.6, 0, 6.3); k.fill();
+    k.lineWidth = 3; k.lineJoin = 'round'; k.lineCap = 'round';
+    const legs = (x1, x2) => { k.strokeStyle = '#f29b2c'; k.beginPath(); k.moveTo(x1, 0); k.lineTo(x1, 9); k.moveTo(x2, 0); k.lineTo(x2, 9); k.moveTo(x1 - 4, 9); k.lineTo(x1 + 3, 9); k.moveTo(x2 - 4, 9); k.lineTo(x2 + 3, 9); k.stroke(); k.strokeStyle = '#2b2140'; };
+    const wingTail = (wx) => { k.beginPath(); k.moveTo(wx - 12, -14); k.quadraticCurveTo(wx, -2, wx + 12, -14); k.stroke(); k.beginPath(); k.moveTo(-24, -30); k.lineTo(-27, -38); k.moveTo(-21, -32); k.lineTo(-21, -41); k.stroke(); };
+    const ROUND = 'M-26 -22 q-6 -16 6 -12 q10 -8 30 -2 q2 -8 12 -8 q12 0 12 12 q0 8 -6 12 q-2 20 -24 20 q-26 0 -30 -22z';
+    if (chick) {   // chicks and ducklings: the round baby shape, unchanged
+      k.translate(58, 92); k.scale(1.25, 1.25); legs(-6, 6);
+      k.fillStyle = ANIMALS.chickColor; const body = new Path2D(ROUND); k.fill(body); k.stroke(body);
+      k.fillStyle = '#f29b2c'; const beak = new Path2D(duck ? 'M33 -27 h13 q5 3 0 7 h-13z' : 'M34 -24 l10 3 -10 4z'); k.fill(beak); k.stroke(beak);
+      k.fillStyle = '#2b2140'; k.beginPath(); k.arc(26, -24, 2.6, 0, 6.3); k.fill();
+    } else if (duck) {   // v0.1.163 (Mac: "I would like the duck's neck longer", "duck 1 but make it fill the tile more")
+      k.translate(51, 109); k.scale(1.8, 1.8); legs(-8, 4);
+      k.fillStyle = '#fffaf0'; const body = new Path2D('M-26 -20 q-6 -14 6 -11 q12 -6 22 0 q6 -2 6 -12 q-2 -12 10 -12 q11 0 11 11 q0 8 -7 10 q-3 3 -2 12 q-2 22 -24 22 q-20 0 -22 -20z'); k.fill(body); k.stroke(body);
+      wingTail(-3);
+      k.fillStyle = '#f29b2c'; const beak = new Path2D('M28 -49 h8 q5 3 0 7 h-8z'); k.fill(beak); k.stroke(beak);
+      k.fillStyle = '#2b2140'; k.beginPath(); k.arc(21, -47, 2.6, 0, 6.3); k.fill();
+    } else {   // v0.1.163 (Mac, hen B bigger): the comb sits on top of the head, the wattle under the beak, and the whole hen fits the picture
+      k.translate(49, 102); k.scale(1.72, 1.72); legs(-6, 6);
+      k.fillStyle = '#e2463c'; const comb = new Path2D('M15 -40 q2 -10 6 -2 q3 -10 7 -1 q4 -8 6 3 q-9 4 -19 0z'); k.fill(comb); k.stroke(comb);
+      k.fillStyle = '#fffaf0'; const body = new Path2D(ROUND); k.fill(body); k.stroke(body);
+      wingTail(0);
+      k.fillStyle = '#f29b2c'; const beak = new Path2D('M33 -28 l10 3.5 -10 3.5z'); k.fill(beak); k.stroke(beak);
+      k.fillStyle = '#e2463c'; k.beginPath(); k.ellipse(31, -17, 2.6, 4.2, 0, 0, 6.3); k.fill(); k.stroke();
+      k.fillStyle = '#2b2140'; k.beginPath(); k.arc(25, -28, 2.6, 0, 6.3); k.fill();
+    }
   }));
 }
 function coopPicture(lv) {
@@ -763,4 +780,4 @@ Clock
 }
 
 // for tests
-export const _debug = () => ({ get hens() { return hens; }, st: st(), get C() { return C; }, get pond() { return pond; }, HOMES, fps: fpsAvg, advance, sync, pet, feed, takeNest, addBird, items: STORE.extra.items, clock });
+export const _debug = () => ({ birdPicture, get hens() { return hens; }, st: st(), get C() { return C; }, get pond() { return pond; }, HOMES, fps: fpsAvg, advance, sync, pet, feed, takeNest, addBird, items: STORE.extra.items, clock });

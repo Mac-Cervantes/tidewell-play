@@ -5,7 +5,7 @@ import * as SkeletonUtils from '../lib/addons/utils/SkeletonUtils.js';
 import * as store from './store.js';   // STORE: the walk-in general store (the inside loads later from interior.js)
 import { mergeVertices } from '../lib/addons/utils/BufferGeometryUtils.js';
 import { createCargo } from './cargo.js';
-import { SPECIAL, SPECIAL_RULES, FERT, VERSION, VERSION_LABEL, RARITY, FISH, CROPS, CROP_ORDER, ITEMS, SHOP, DEBUG, BAIT, BAIT_ORDER, DECOR, DECOR_ORDER, STARTER_KIT, ORDER_FOLK, ORDERS, makeOrder, orderFolk, CARGO, TOOLS as GEAR, TOOL_ORDER as GEAR_ORDER, CLEAR_NEEDS, HIT_SECONDS, DIG, XP, LEVELS, xpToNext, xpInto, levelFor, rankFor, unlockLevel, rollFish, seasonInfo, timeOfDay, SIGHTS, rollSize, RODS } from './data.js';
+import { SPECIAL, SPECIAL_RULES, FERT, GRASS, VERSION, VERSION_LABEL, RARITY, FISH, CROPS, CROP_ORDER, ITEMS, SHOP, DEBUG, BAIT, BAIT_ORDER, DECOR, DECOR_ORDER, STARTER_KIT, ORDER_FOLK, ORDERS, makeOrder, orderFolk, CARGO, TOOLS as GEAR, TOOL_ORDER as GEAR_ORDER, CLEAR_NEEDS, HIT_SECONDS, DIG, XP, LEVELS, xpToNext, xpInto, levelFor, rankFor, unlockLevel, rollFish, seasonInfo, timeOfDay, SIGHTS, rollSize, RODS } from './data.js';
 import { paintSkin, SKIN, HAIR_COLORS, CLOTH } from './look.js';
 import { HAIR3D, hairFor } from './hair3d.js';
 import { wearList, wearFor, hairUnderHat, HATS, PACKS as BACKPACKS, packModel } from './wear3d.js';
@@ -469,7 +469,36 @@ function floorY(x, z) {
 }
 const DOCK_FLOOR = 0.4;
 // trees between the camera and the player fade out so you never lose your character
-const occluders = [];
+const occluders = [], homeBushes = [];
+// Stumps read as stumps (v0.1.156, Mac, mockup B): dark bark, growth rings on the cut top, roots at the base and a little sprout.
+// The pack's stump is pale peach with a plain top, which looked like a pot.
+const STUMP = { bark: 0x8a5a34, top: 0xf3dcb4, ring: 0xb9895a, rings: [0.56, 0.37, 0.18], roots: 5 };
+let stumpKit = null;
+function dressStump(o) {
+  if (!stumpKit) {
+    const flat = (c) => new THREE.MeshLambertMaterial({ color: c, flatShading: true });
+    stumpKit = { mats: {}, ring: new THREE.MeshLambertMaterial({ color: STUMP.ring }), root: flat(STUMP.bark), stem: flat(0x5fae4a), leaf: flat(0x7ed35a),
+      rootGeo: new THREE.ConeGeometry(0.12, 0.36, 5), stemGeo: new THREE.ConeGeometry(0.035, 0.2, 4), leafGeo: new THREE.SphereGeometry(0.07, 5, 4), ringGeo: {} };
+  }
+  const K = stumpKit;
+  o.traverse(q => { if (!q.isMesh) return; const n = q.material.name;
+    if (!K.mats[n]) { K.mats[n] = q.material.clone(); K.mats[n].color.set(n === 'woodBark' ? STUMP.bark : STUMP.top); }
+    q.material = K.mats[n]; });
+  o.updateMatrixWorld(true);
+  const bb = new THREE.Box3().setFromObject(o), r = Math.min(bb.max.x - bb.min.x, bb.max.z - bb.min.z) / 2, top = bb.max.y - o.position.y, base = bb.min.y - o.position.y + 0.13;
+  const g = new THREE.Group(); g.scale.setScalar(1 / o.scale.x);   // built in metres, whatever size the stump was placed at
+  for (const k of STUMP.rings) {
+    const key = (r * k).toFixed(2), geo = K.ringGeo[key] || (K.ringGeo[key] = new THREE.RingGeometry(r * k - 0.022, r * k, 7));
+    const m = new THREE.Mesh(geo, K.ring); m.rotation.x = -Math.PI / 2; m.position.y = top + 0.006; m.userData.noHull = true; m.receiveShadow = true; g.add(m);
+  }
+  for (let i = 0; i < STUMP.roots; i++) {
+    const a = i * 6.283 / STUMP.roots + 0.3, m = new THREE.Mesh(K.rootGeo, K.root);
+    m.position.set(Math.sin(a) * r * 0.9, base, Math.cos(a) * r * 0.9); m.rotation.set(Math.cos(a) * 1.25, 0, -Math.sin(a) * 1.25); m.castShadow = true; g.add(m);
+  }
+  const st = new THREE.Mesh(K.stemGeo, K.stem); st.position.set(r * 0.5, top + 0.08, -r * 0.2); st.userData.noHull = true; g.add(st);
+  const lf = new THREE.Mesh(K.leafGeo, K.leaf); lf.scale.set(1.3, 0.5, 0.8); lf.position.set(r * 0.5 + 0.06, top + 0.17, -r * 0.2); lf.userData.noHull = true; g.add(lf);
+  o.add(g);
+}
 function occluder(o) {
   const mats = [];
   o.traverse(m => { if (m.isMesh) { m.material = m.material.clone(); m.material.transparent = true; mats.push(m.material); } });
@@ -533,7 +562,7 @@ function buildWorld() {
 
   // nature dressing around town
   const nearWater = (x, z, m = 0.35) => [[0, 0], [m, 0], [-m, 0], [0, m], [0, -m]].some(([a, b]) => spots.isWet(x + a, z + b));   // is a trunk here standing in water?
-  const T = (n, x, z, s = 1, r = rnd() * 6.28) => place('nature', n, x, z, { s, r });
+  const T = (n, x, z, s = 1, r = rnd() * 6.28) => { const o = place('nature', n, x, z, { s, r }); if (n === 'stump_round') dressStump(o); return o; };
   [['tree_oak', -12, 0.5], ['tree_default', 10.6, 3.4], ['tree_detailed', 11.8, -0.4], ['tree_oak', -12.5, 5.6],
    ['tree_default', 13.4, 5.8], ['tree_detailed', -10.8, -1.8], ['tree_pineRoundA', 14.5, 1.2], ['tree_oak', 9.4, 6.2]]
     .forEach(([n, x, z]) => T(n, spots.onBank(x, z) ? spots.innerBank(z) + 0.5 : x, z, 1.15 + rnd() * 0.2));   // FISHING: never in the river (the two oaks on its bank came back in v0.1.79: their trunks are dry)
@@ -541,8 +570,16 @@ function buildWorld() {
   for (const [cx, cz] of [[3.6, 5.6], [5.8, 1.6], [7.2, 1.4], [-5.5, 4.4], [1.8, 1.2], [-1.6, 6.6], [6.0, 5.8]]) {
     for (let k = 0; k < 5; k++) wildPlant(T(flowers[(((k + Math.round(cx)) % 3) + 3) % 3], cx + (rnd() - 0.5) * 1.2, cz + (rnd() - 0.5) * 0.8, 1.1));
   }
-  for (const [bx, bz] of [[-3.2, 6.8], [3.4, 6.9], [-6, 6.9], [6.5, 6.9], [-10, 6.8], [10, 6.8], [8.4, 2.4], [-11, 3]])
-    wildPlant(T(rnd() > 0.5 ? 'plant_bushLarge' : 'plant_bush', bx, bz, 1.2));
+  // The starting lot's wild bushes can be cleared for good with the shovel, like a bush in a bought lot (v0.1.157; Mac: "I can't seem to remove this weed", "only with shovel")
+  // the first one (-3.2, 6.8, by the gate and the FOR SALE sign) is gone since v0.1.158 (Mac: "remove it from the game"); its slot stays so the others keep their keys and the world's random layout doesn't shift
+  [null, [3.4, 6.9], [-6, 6.9], [6.5, 6.9], [-10, 6.8], [10, 6.8], [8.4, 2.4], [-11, 3]].forEach((at, i) => {
+    if (!at) { rnd(); rnd(); return; }
+    const [bx, bz] = at;
+    const kind = rnd() > 0.5 ? 'plant_bushLarge' : 'plant_bush', o = wildPlant(T(kind, bx, bz, 1.2));
+    const sz = new THREE.Box3().setFromObject(o).getSize(new THREE.Vector3());
+    o.userData = { kind, key: 'home:' + i, h: sz.y, r: Math.min(0.6, Math.max(sz.x, sz.z) / 2 - 0.2) };
+    homeBushes.push(o);
+  });
 
   scenery.init({ THREE, scene, M, SCALE, WATER_Y, groundY, bankX: spots.innerBank });   // SCENERY
   buildLots(T);
@@ -772,7 +809,7 @@ function syncPuppets() {
       tm.position.copy(fist).sub(_pv.set(g[0], g[1], g[2]).multiplyScalar(tm.scale.x).applyQuaternion(tm.quaternion));
     }
   } else if (P.k.position.lengthSq()) { P.k.position.set(0, 0, 0); P.k.updateMatrixWorld(true); }
-  if (body.puppet) { const lab = window.__sitLab; if (lab) sitPose(body, SIT[lab.pose || 'A'], 1, clock.elapsedTime, lab.seat ?? null); else if (sit.w > 0) sitPose(body, SIT[sit.pose], sit.e, clock.elapsedTime, sit.seatY); }   // SIT (and its mockup switch)
+  if (body.puppet) { const lab = window.__sitLab; if (lab) sitPose(body, SIT[lab.pose || 'A'], 1, clock.elapsedTime, lab.seat ?? null); else if (sit.w > 0) sitPose(body, SIT[sit.pose], sit.e, clock.elapsedTime, sit.seatY); else if (body.sit) anim.sitPose(body, grass.dt); }   /* SIT-GRASS */   // SIT (and its mockup switch)
 }
 
 // ---------- wardrobe (decision 63: mockup A + swipe to turn) ----------
@@ -1231,8 +1268,9 @@ function landFish() {
   const fish = fishing.fish || rollCast();   // REEL: the fish was picked when the bobber landed
   fishing.rec = dex.record(fish, rollSize(fish));   // FISHING: its size, and your biggest
   setFish('catch'); audio.play('catch');
-  if (!fishIcon[fish.id]) startFishJump(fishing.land.x, fishing.land.z, fish);   // picture not ready (very slow connection): the old 3D jump
-  else addSplash(fishing.land.x, fishing.land.z);
+  const at = fishing.bobFight && fishing.bobAt ? fishing.bobAt : fishing.land;   // the fish comes out where you reeled it to
+  if (!fishIcon[fish.id]) startFishJump(at.x, at.z, fish);   // picture not ready (very slow connection): the old 3D jump
+  else addSplash(at.x, at.z);
   addItem(fish.id, 1); S.caught[fish.id] = (S.caught[fish.id] || 0) + 1; addXP(XP.catch + (S.caught[fish.id] === 1 ? XP.newFish : 0)); commit();
   showCatch(fish);
 }
@@ -1285,17 +1323,22 @@ function bobberTarget(tip, out) {
   }
   if (F.state === 'wait' || F.state === 'bite') {
     out.copy(F.land); out.y = WATER_Y + 0.03 + Math.sin(elapsed * 4) * 0.02 - (F.state === 'bite' ? 0.07 : 0) - reel.nibbleDip(F);   // REEL: a nibble is a small dip
+    F.bobFight = false;
     return true;
   }
-  if (F.state === 'fight') return reel.bobber(out);   // REEL
+  if (F.state === 'fight') { const ok = reel.bobber(out); if (ok) (F.bobAt || (F.bobAt = new THREE.Vector3())).copy(out); F.bobFight = ok; return ok; }   // REEL; remember where the fight left the bobber
   if (F.state === 'catch' || F.state === 'reel') {
     const u = F.state === 'catch' ? Math.min(1, F.t / 0.9) * 0.5 : 0.5 + Math.min(1, F.t / 0.45) * 0.5;
     const hang = tip.clone(); hang.y -= 0.42;
-    out.lerpVectors(F.land, hang, u); out.y += Math.sin(Math.PI * u) * 0.6;
+    out.lerpVectors(F.bobFight && F.bobAt ? F.bobAt : F.land, hang, u); out.y += Math.sin(Math.PI * u) * 0.6;   // v0.1.157: from where the fight left it, not back out at the cast spot (Mac)
     return true;
   }
   return false;
 }
+// How the rod is held while the line is out. gap: how far up the rod the left hand holds, from the right hand; out: how far in front of the body the right hand is;
+// elbow: how far the left elbow is pushed out to the side (metres at normal height). window.__rodLab overrides for mockups.
+const ROD_HOLD = { gap: 0.22, out: 0.4, side: 0.04, elbow: 4.5, elbowR: 4.5 };   // v0.1.160 (Mac, mockup S1): was gap 0.085, out 0.3, elbows 0.6, which put the right forearm in the belly during a fight   // side: how far to the right of the body's middle the right hand is; elbowR: like elbow, for the right arm
+const rodHold = () => ({ ...ROD_HOLD, ...(window.__rodLab || {}) });
 function applyRodPose(dt) {
   updateFishing(dt);
   // relaxed carry (arm at your side, rod in the hand) unless you're actually fishing
@@ -1321,16 +1364,17 @@ function applyRodPose(dt) {
   const torso = b.bones.Torso.getWorldPosition(new THREE.Vector3());
   r.a = fishing.a + (sg ? amt * (0.28 + (sg.wind ? Math.sin(tE * 7) * 0.12 : 0) - sg.thrash * 0.5) : 0);   // rod held high against the pull, pumped as you wind, dragged down on a thrash
   const lift = fishing.state === 'flick' ? 0.05 * S : 0;
-  const grip = torso.clone().addScaledVector(f, 0.3 * S).addScaledVector(right, 0.04 * S).add(new THREE.Vector3(0, -0.1 * S + lift, 0));
+  const RH = rodHold();
+  const grip = torso.clone().addScaledVector(f, RH.out * S).addScaledVector(right, RH.side * S).add(new THREE.Vector3(0, -0.1 * S + lift, 0));
   const dir = f.clone().multiplyScalar(Math.cos(r.a)).add(new THREE.Vector3(0, Math.sin(r.a), 0)).addScaledVector(right, sg ? amt * sg.drag * 0.45 : 0).normalize();   // the rod tip follows a darting fish
   // right hand on the grip, left hand a little further up the rod
   const down = new THREE.Vector3(0, -1, 0);
-  solveArm(b, 'R', grip, down.clone().addScaledVector(right, 0.6), r.w);
+  solveArm(b, 'R', grip, down.clone().addScaledVector(right, rodHold().elbowR), r.w);
   // one hand while idle or walking and for the flick; the left hand joins just above the right once the line is out
   const both = ['wait', 'bite', 'catch', 'fight'].includes(fishing.state);
   r.lw += ((both ? 1 : 0) - r.lw) * Math.min(1, dt * (both ? 6 : 12));
   if (!r.fixL) r.fixL = new THREE.Vector3();
-  if (r.lw > 0.02) solveArm(b, 'L', grip.clone().addScaledVector(dir, 0.085 * S).add(r.fixL), down.clone().addScaledVector(right, -0.6), r.w * r.lw);
+  if (r.lw > 0.02) solveArm(b, 'L', grip.clone().addScaledVector(dir, RH.gap * S).add(r.fixL), down.clone().addScaledVector(right, -RH.elbow), r.w * r.lw);
   r.dir = dir; r.S = S;
   worldRod.position.copy(grip).addScaledVector(dir, -0.08 * S);
   worldRod.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
@@ -1456,7 +1500,7 @@ function wildPlant(o) {
   wild.get(k).push(o);
   return o;
 }
-function showWild(c, on) { for (const o of wild.get(cellKey(c)) || []) o.visible = on; }
+function showWild(c, on) { for (const o of wild.get(cellKey(c)) || []) o.visible = on && !(o.userData.key && isCleared(o)); }   // a cleared bush stays gone
 let plotGeo = null;
 // Plant and soil size (v0.1.154; Mac, Nov 22, mockups B + C): `size` multiplies every plant on its plot, `soil` is the tilled square's width in its 1 m cell,
 // `lift` puts the timer and ripe bubble just above the plant's top instead of at a fixed height. window.__plantLab overrides for mockups.
@@ -1607,7 +1651,7 @@ function harvest(p) {
   return { n, item, roll };
 }
 // an empty plot (harvested, or tilled and never planted) goes back to grass after 2 real hours (Mac), counting time away
-const GRASS_MS = 2 * 3600e3;
+const GRASS_MS = 48 * 3600e3;   // 2 days (Mac, v0.1.161: 2 hours was too fast); the soil turns dusty tan halfway
 let grassCheck = 0;
 function updatePlots(dt) {
   const now = Date.now(), check = (grassCheck -= dt) <= 0;
@@ -1629,6 +1673,7 @@ function updatePlots(dt) {
 }
 function restorePlots() {
   const now = Date.now();
+  if (!S.grass2d) { for (const q of S.plots) if (!q.crop) q.emptySince = now; S.grass2d = true; }   // v0.1.161: plots that were already empty get the full two days from this update
   for (const q of S.plots) {
     if (!q.crop && !q.emptySince) q.emptySince = now;   // saves from before v0.1.32: two hours from now
     if (!q.crop && now - q.emptySince > GRASS_MS) continue;   // went back to grass while you were away
@@ -1656,7 +1701,7 @@ function doAction(a) {
   if (a.kind === 'talk') { if (a.key === 'fishel') openBaitShop(); else if (a.key === 'rosa') openRosaShop(); else if (a.key === 'pike') talkPike(); else startTalk(); return; }
   if (a.kind === 'board') { openOrders(true); return; }
   if (a.kind === 'sit') { sitDown(a.bench); return; }   // SIT
-  if (a.kind === 'stand') { standUp(); return; }
+  if (a.kind === 'stand') { standUp(); grassUp(); return; }   // SIT-GRASS too
   if (a.kind === 'lot') { openLotSheet(a.lot); return; }
   if (a.kind === 'clear') { startClear(a.item); return; }
   if (a.kind === 'load') { cargo.open(a.box); return; }
@@ -1751,6 +1796,7 @@ undoBtn.addEventListener('click', () => {
   const h = history.pop(); if (!h) return;
   const p = plots.get(h.key);
   if (h.kind === 'till' && p && !p.save.crop) removePlot(p);
+  else if (h.kind === 'erase' && !p && tillable(h.cell)) { addPlot(h.cell); addItem(GRASS.item, 1); }
   else if (h.kind === 'plant' && p && p.save.crop) { p.save.crop = null; p.save.emptySince = Date.now(); syncCrop(p); addItem(h.seed || 'seed_turnip', 1); }
   else if (h.kind === 'harvest' && p && invCount(h.item || CROPS[h.crop].item) >= h.n) { addItem(h.item || CROPS[h.crop].item, -h.n); addXP(-XP.crop * h.n); p.save.crop = h.crop; p.save.plantedAt = h.plantedAt; p.save.roll = h.roll || { v: '', sz: 0 }; p.stage = -2; syncCrop(p, true); }
   else { toast("Can't undo that now"); return; }
@@ -1827,14 +1873,15 @@ const farm = { mode: 'off', lift: 0, t: 0, P: new THREE.Vector3(), from: new THR
   foot: new THREE.Vector3(), footO: new THREE.Vector3(), lastG: null, done: new Set(), got: 0, n: 0, upright: 1, retDur: 0.8 };
 const farmTray = document.getElementById('farmTray');
 // the tool you used last (null until you've picked one); the hotbar shows shears until then
-const noSeeds = (t) => t.seeds && invCount(seedSel()) <= 0;
+const noSeeds = (t) => t.seeds && invCount(seedSel()) <= 0 && invCount(GRASS.item) <= 0;
 function farmPicked() { const t = FARM_TOOLS[S.farmTool]; return t && !(t.bag && !invCount(t.bag)) && !noSeeds(t) ? S.farmTool : null; }
 function farmSel() { return farmPicked() || 'shears'; }
 // Changing seeds while you float with the seed bag. '' = off · 'row' = a second row of your seeds under the tools · 'swap' = the tools make way for your seeds, with a back tile.
 const SEED_PICK = 'row';   // Mac picked the row, above the tools (Nov 22)
 const seedPick = () => (window.__seedPickLab != null ? window.__seedPickLab : SEED_PICK);
-const seedChips = () => { const sel = seedSel(); return CROP_ORDER.filter(id => invCount(CROPS[id].seed) > 0).map(id => { const c = CROPS[id], sd = c.seed;
-  return `<button class="schip${sd === sel ? ' on' : ''}" data-seed="${sd}" aria-pressed="${sd === sel}" aria-label="${c.name} seeds, ${invCount(sd)}">${cropImg(id, 26)}<span class="sn">${c.name}</span><span class="st">${c.growMinutes}m</span><b>${invCount(sd)}</b></button>`; }).join(''); };
+const seedChips = () => { const sel = farm.grass ? '' : seedSel(); return CROP_ORDER.filter(id => invCount(CROPS[id].seed) > 0).map(id => { const c = CROPS[id], sd = c.seed;
+  return `<button class="schip${sd === sel ? ' on' : ''}" data-seed="${sd}" aria-pressed="${sd === sel}" aria-label="${c.name} seeds, ${invCount(sd)}">${cropImg(id, 26)}<span class="sn">${c.name}</span><span class="st">${c.growMinutes}m</span><b>${invCount(sd)}</b></button>`; }).join('')
+  + (invCount(GRASS.item) > 0 ? `<button class="schip${farm.grass ? ' on' : ''}" data-seed="${GRASS.item}" aria-pressed="${!!farm.grass}" aria-label="Grass seed, ${invCount(GRASS.item)}: erases empty soil">${GRASS_SVG(26)}<span class="sn">Grass</span><span class="st">erase</span><b>${invCount(GRASS.item)}</b></button>` : ''); };
 function renderFarmTray() {
   const show = (farm.mode === 'tray' || farm.mode === 'ready') && !decor.on;
   farmTray.hidden = !show; if (!show) return;
@@ -1849,7 +1896,9 @@ function renderFarmTray() {
   if (mode === 'swap') farmTray.querySelector('.srow:not(.srow2)').innerHTML = `<button class="schip" data-farm="hoe" data-back="1" aria-label="Back to the tools">${svg('hoe', '#2b2140', 22)}<span class="sn">Tools</span><span class="st">back</span></button>` + seedChips();
 }
 farmTray.addEventListener('click', (e) => {
-  const sb = e.target.closest('[data-seed]'); if (sb) { S.seedSel = sb.dataset.seed; farm.seed = null; commit(); renderHotbar(); renderFarmTray(); return; }
+  const sb = e.target.closest('[data-seed]');
+  if (sb && sb.dataset.seed === GRASS.item) { farm.grass = true; farm.seed = null; renderFarmTray(); return; }   // grass is only ever picked by this tap, and never saved as your seed
+  if (sb) { S.seedSel = sb.dataset.seed; farm.seed = null; farm.grass = false; commit(); renderHotbar(); renderFarmTray(); return; }
   const b = e.target.closest('[data-farm]'); if (!b) return;
   const t = FARM_TOOLS[b.dataset.farm];
   if (t.gear && !hasTool(b.dataset.farm)) { toast(`${toolSeller()} sells the ${t.name.toLowerCase()} (${GEAR[b.dataset.farm].price} coins, town level ${GEAR[b.dataset.farm].level}).`); return; }
@@ -1862,7 +1911,7 @@ farmTray.addEventListener('click', (e) => {
 function farmOpen() {
   // float up facing the camera; your last tool comes straight into your hands so you can drag right away (or switch)
   // turn to the camera at once: turning while you hang off the tool swung the body round in a circle before it settled (Mac)
-  farm.t = 0; farm.seed = null; player.walkTo = null; player.faceYaw = Math.PI; player.yaw = Math.PI;
+  farm.t = 0; farm.seed = null; farm.grass = false; player.walkTo = null; player.faceYaw = Math.PI; player.yaw = Math.PI;
   farm.mode = farmPicked() ? 'ready' : 'tray';
   if (farm.mode === 'ready') { resetDangle(); showFarmTool(); document.querySelector('#toolName span').textContent = FARM_TOOLS[farmPicked()].name + ' \u00b7 drag across your field'; document.getElementById('toolName').hidden = false; toolNameT = 2.2; }
   renderFarmTray();
@@ -1937,6 +1986,8 @@ function farmGrab(x, y) {
   farm.fx = x; farm.fy = y;
   const w = fingerToWorld(x, y); if (!w) return;
   farm.mode = 'drag'; farm.t = 0; farm.done.clear(); farm.got = 0; farm.n = 0; farm.lastG = null;
+  farm.grassDone = false;
+  if (farm.seed && invCount(farm.seed) <= 0) farm.seed = null;   // v0.1.156 (Mac): the last swipe used that seed up, so this swipe plants the one the tray highlights
   renderFarmTray();   // the tray tucks away while you drag
   farm.target = w.P; farmWork(w.G);
 }
@@ -1976,6 +2027,13 @@ function farmApply(c, k) {
   const p = plots.get(k), kind = farmSel();
   if (kind === 'seeds') {   // one seed into every empty tilled plot; it keeps to the seed you started with and stops when that runs out
     if (!p || p.save.crop) return false;
+    if (farm.grassDone) return false;   // the grass seed ran out in this swipe: never carry on with a crop seed
+    if (farm.grass) {   // grass seed (v0.1.161): erases an empty plot. Only ever on when its tile was tapped.
+      if (invCount(GRASS.item) <= 0) { farm.grass = false; farm.grassDone = true; renderFarmTray(); return false; }
+      addItem(GRASS.item, -1); const cell = { x: p.cell.x, z: p.cell.z }; removePlot(p); history.push({ kind: 'erase', key: k, cell });
+      if (invCount(GRASS.item) <= 0) { farm.grass = false; farm.grassDone = true; }
+      farm.n++; buzz(); renderHotbar(); renderFarmTray(); return true;
+    }
     const sd = farm.seed || (farm.seed = seedSel()); if (invCount(sd) <= 0) return false;
     addItem(sd, -1); plantIn(p, ITEMS[sd].crop); history.push({ kind: 'plant', key: k, seed: sd });
     farm.n++; buzz(); renderHotbar(); renderFarmTray(); return true;
@@ -2039,6 +2097,15 @@ function dryMat() {
 function setRows(p, mat) { for (let i = 1; i <= 3; i++) if (p.g.children[i]) p.g.children[i].material = mat; }
 // tool held overhead (world space, follows the hands)
 const farmToolMesh = {};
+// the seed packet's picture follows the seed in the bag (the crop's own icon, once it has loaded)
+const seedPacket = { mat: null, crop: '', tex: {} };
+function syncSeedPacket() {
+  const sd = farm.seed && invCount(farm.seed) > 0 ? farm.seed : seedSel(), crop = farm.grass ? 'grass' : ITEMS[sd] && ITEMS[sd].crop, src = crop === 'grass' ? 'data:image/svg+xml,' + encodeURIComponent(GRASS_SVG(64).replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ')) : crop && cropIcon[crop];
+  if (!seedPacket.mat || !src || seedPacket.crop === crop) return;
+  let t = seedPacket.tex[crop];
+  if (!t) { const img = new Image(); t = seedPacket.tex[crop] = new THREE.Texture(img); t.colorSpace = THREE.SRGBColorSpace; img.onload = () => { t.needsUpdate = true; }; img.src = src; }
+  seedPacket.mat.map = t; seedPacket.mat.opacity = 1; seedPacket.mat.needsUpdate = true; seedPacket.crop = crop;
+}
 // where each tool is held, in the tool's own space: the shears' rings, the can's handle, low on the hoe's shaft
 const TOOL_GRIP = { shears: [0, 0.02, 0], can: [0, 0, 0], fert: [0, 0, 0], seeds: [0, 0, 0], hoe: [0.074, 0.01, 0], shovel: [0.074, 0.01, 0] };
 let CAN_PICK = 'level';
@@ -2076,12 +2143,18 @@ function makeFarmTools() {
   const tie = m(new THREE.TorusGeometry(0.045, 0.012, 6, 10), 0x8a5a34, 0, 0.035, 0); tie.rotation.x = Math.PI / 2; fb.add(tie);
   const leaf = m(new THREE.CircleGeometry(0.06, 10), 0x5aa54a, 0, 0.21, 0.13); leaf.scale.set(0.6, 1, 1); fb.add(leaf);
   fb.rotation.z = 0.45;
-  // seed bag: a small tan sack held by its neck, tipped a little so seeds trickle out
+  // seed packet (v0.1.159, Mac, mockup B, "a bit bigger"): a paper packet with the picture of the seed you're planting on both faces.
+  // It was a round tan sack, which read as a ball (Mac: "the character just looks like he's holding a ball").
   const sbag = new THREE.Group(), sbb = new THREE.Group(); sbag.add(sbb);
-  const ssack = m(new THREE.SphereGeometry(0.13, 10, 8), 0xd9c08a, 0, 0.18, 0); ssack.scale.set(1, 1.15, 0.8); ssack.material.flatShading = true; sbb.add(ssack);
-  sbb.add(m(new THREE.CylinderGeometry(0.03, 0.06, 0.08, 8), 0xe8d5a6, 0, 0.03, 0));
-  const stie = m(new THREE.TorusGeometry(0.04, 0.011, 6, 10), 0x8a5a34, 0, 0.035, 0); stie.rotation.x = Math.PI / 2; sbb.add(stie);
-  sbb.add(m(new THREE.CircleGeometry(0.05, 10), 0x4caf50, 0, 0.19, 0.105));
+  { const K = 1.25, W = 0.26 * K, H = 0.34 * K, D = 0.035 * K, y0 = 0.04;
+    sbb.add(m(new THREE.BoxGeometry(W, H, D), 0xfff4d6, 0, y0 + H / 2, 0));
+    sbb.add(m(new THREE.BoxGeometry(W + 0.002, 0.08 * K, D + 0.002), 0x3fae5a, 0, y0 + H - 0.04 * K, 0));
+    sbb.add(m(new THREE.BoxGeometry(W + 0.002, 0.03 * K, D + 0.002), 0x2f8f4a, 0, y0 + H + 0.015 * K, 0));
+    seedPacket.mat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0 });
+    const pic = new THREE.Mesh(new THREE.PlaneGeometry(0.2 * K, 0.2 * K), seedPacket.mat); pic.position.set(0, y0 + H * 0.42, D / 2 + 0.002); sbb.add(pic);
+    const pic2 = pic.clone(); pic2.position.z = -pic.position.z; pic2.rotation.y = Math.PI; sbb.add(pic2);
+    for (const [x, y] of [[-0.03, -0.02], [0.02, -0.07], [-0.01, -0.12]]) { const sd = m(new THREE.SphereGeometry(0.02, 5, 4), 0xe9d08a, x - W / 2 + 0.03, y0 + H + y + 0.04, 0); sd.material.flatShading = true; sbb.add(sd); }
+  }
   sbb.rotation.z = 0.35;
   for (const [k, g] of [['shears', sh], ['can', can], ['hoe', hoe], ['shovel', shv], ['fert', fert], ['seeds', sbag]]) { g.visible = false; scene.add(g); farmToolMesh[k] = g; }
 }
@@ -2168,7 +2241,7 @@ function applyFarmPose(dt) {
   }
   // tool overhead in both hands
   const tm = farmToolMesh[farmSel()];
-  if (tm && tm.visible) { tm.position.copy(farm.P); tm.quaternion.copy(b.root.quaternion); tm.scale.setScalar(b.H / 1.7); }
+  if (tm && tm.visible) { tm.position.copy(farm.P); tm.quaternion.copy(b.root.quaternion); tm.scale.setScalar(b.H / 1.7); if (farmSel() === 'seeds') syncSeedPacket(); }
 }
 
 // SIT (v0.1.132; a tester asked to sit down, Mac: benches only, all three poses at random). Walk up to a bench and tap Sit:
@@ -2207,10 +2280,45 @@ function updateSit(dt) {
   player.pos.lerpVectors(sit.from, sit.at, sit.e); player.pos.y = 0; player.faceYaw = sit.w > 0 ? sit.yaw : null;
   if (!sit.on && sit.w <= 0) { player.pos.copy(sit.from); player.pos.y = 0; sit.rec = null; }
 }
+// SIT-GRASS (try/sit; Mac: sit cross-legged on the grass around the animals). Stand still for 5 s on the grass near
+// the chicken coop or the duck pond and you sit down by yourself, cross-legged, one of three poses at random (never
+// the same twice in a row). Your pet comes and curls up beside you (pets.js). Move the stick or tap Stand to get up.
+// The poses live in anim.js (SITS, initSit, sitPose).
+const grass = { on: false, idle: 0, kind: null, dt: 0 };
+const GRASS_SECS = 5, GRASS_SECS_FAR = 10, GRASS_NEAR = 3;   // seconds standing still; metres from the edge of the coop or pond
+function onGrass(x, z) {
+  if (onDock(x, z) || spots.freshTarget(x, z)) return false;   // grass, the beach and sandy banks are all fine (Mac); not the dock
+  return !(Math.abs(x - pathCx(z)) < 1.2 && z > -3.2 && z < LOTS_BACK + 1.5);   // not on the path
+}
+function nearAnimals(x, z) {
+  for (const r of S.decor) {
+    if (r.id !== 'coop' && r.id !== 'pond') continue;
+    const [w, d] = footprint(r.id, r.r || 0), dx = Math.max(0, Math.abs(x - (r.x + w / 2)) - w / 2), dz = Math.max(0, Math.abs(z - (r.z + d / 2)) - d / 2);
+    if (Math.hypot(dx, dz) < GRASS_NEAR) return true;
+  }
+  return false;
+}
+function grassDown() {
+  const picks = Object.keys(anim.SITS).filter(k => k !== grass.kind); grass.kind = picks[Math.floor(Math.random() * picks.length)]; if (window.__grassKind) grass.kind = window.__grassKind;   // test hook
+  anim.initSit(body, M.dummy, grass.kind); anim.setSit(body, true); grass.on = true; grass.body = body; player.walkTo = null;
+}
+function grassUp() { if (!grass.on) return; grass.on = false; grass.idle = 0; if (grass.body) anim.setSit(grass.body, false); }
+function updateGrass(dt) {
+  grass.dt = dt;
+  if (!body || !body.puppet || !M.dummy) return;
+  if (grass.body && grass.body !== body) { grass.body.sit = null; grass.body = null; grass.on = false; }   // changed outfit mid-sit
+  const busy = dlg.open || decor.on || farm.mode !== 'off' || ward.on || fishing.state !== 'idle' || sit.w > 0 || store.inside();
+  if (grass.on) { if (Math.hypot(joy.dx, joy.dy) > 0.35 || busy) grassUp(); return; }
+  const still = !player.moving && !player.walkTo && Math.hypot(joy.dx, joy.dy) < 0.05 && tool === 'none' && !busy && !anim.sitting(body);
+  grass.idle = still ? grass.idle + dt : 0;
+  // by the coop or pond after 5 s; anywhere else on the grass after 10 s (Mac)
+  if (onGrass(player.pos.x, player.pos.z) && grass.idle >= (window.__grassSecs ?? (nearAnimals(player.pos.x, player.pos.z) ? GRASS_SECS : GRASS_SECS_FAR))) grassDown();
+}
 function nearWater() { return onDock(player.pos.x, player.pos.z) || player.pos.z < -2.0 || !!spots.freshTarget(player.pos.x, player.pos.z); }   // FISHING: + river and lake
 function pickUse() {
   if (dlg.open || decor.on || farm.mode !== 'off') return null;
-  if (sit.on) return { kind: 'stand', key: 'stand' };   // SIT
+  if (sit.on || grass.on) return { kind: 'stand', key: 'stand' };   // SIT, SIT-GRASS
+  if (grass.body && anim.sitting(grass.body)) return null;
   if (sit.w > 0) return null;
   // people and the board: the closest one wins, and the one you're already facing sticks unless another is
   // clearly closer, so the button doesn't flip back and forth between two of them (Mac)
@@ -3080,7 +3188,10 @@ function renderRosaShop() {
   const fertRow = `<div class="rrow" data-rfertrow><div class="ric">${svg('fert', '#8a5a34', 34)}</div>
       <div class="rtx"><b>Fertilizer</b><span>${FERT.pack} bags \u00b7 each makes a crop ${FERT.minutes} min faster${invCount('fertilizer') ? ` \u00b7 you have ${invCount('fertilizer')}` : ''}</span></div>
       <button data-rfert ${S.coins < FERT.buy ? 'disabled' : ''}>${FERT.buy}</button></div>`;   // fertilizer first, so it isn't buried under the locked seeds
-  document.getElementById('rosaList').innerHTML = fertRow + [...CROP_ORDER].sort((a, b) => unlockLevel(CROPS[a].seed) - unlockLevel(CROPS[b].seed) || CROPS[a].growMinutes - CROPS[b].growMinutes).map(id => {
+  const grassRow = `<div class="rrow" data-rgrassrow><div class="ric">${GRASS_SVG(38)}</div>
+      <div class="rtx"><b>Grass seed</b><span>${GRASS.pack} seeds \u00b7 turns empty soil back to grass${invCount(GRASS.item) ? ` \u00b7 you have ${invCount(GRASS.item)}` : ''}</span></div>
+      <button data-rgrass ${S.coins < GRASS.buy ? 'disabled' : ''}>${GRASS.buy}</button></div>`;
+  document.getElementById('rosaList').innerHTML = fertRow + grassRow + [...CROP_ORDER].sort((a, b) => unlockLevel(CROPS[a].seed) - unlockLevel(CROPS[b].seed) || CROPS[a].growMinutes - CROPS[b].growMinutes).map(id => {
     const c = CROPS[id], it = ITEMS[c.seed], cost = it.buy * n, lv = unlockLevel(c.seed), open = lv <= S.level, have = invCount(c.seed);
     return `<div class="rrow${open ? '' : ' locked'}" data-rseed="${c.seed}"><div class="ric">${cropImg(id, 40)}</div>
       <div class="rtx"><b>${c.name}</b><span>${n} seeds \u00b7 grows ${c.growMinutes} min${have ? ` \u00b7 you have ${have}` : ''}</span></div>
@@ -3088,6 +3199,12 @@ function renderRosaShop() {
   }).join('');
 }
 document.getElementById('rosaList').addEventListener('click', (e) => {
+  const gr = e.target.closest('[data-rgrass]');
+  if (gr) {
+    if (gr.disabled || S.coins < GRASS.buy) return;
+    audio.play('buy'); S.coins -= GRASS.buy; addItem(GRASS.item, GRASS.pack); renderHotbar(); commit(); renderRosaShop();
+    toast(`+${GRASS.pack} grass seed. Find it with your seeds in Farm tools.`); return;
+  }
   const f = e.target.closest('[data-rfert]');
   if (f) {
     if (f.disabled || S.coins < FERT.buy) return;
@@ -3193,7 +3310,8 @@ function tickSaleBubble() {
 function buildLots(T) {
   // side lots from v0.1.35–37 are gone; no carry-over (Mac: "you can clear the saves")
   S.lots = (S.lots || []).filter(id => LOTS.some(l => l.id === id));
-  S.cleared = (S.cleared || []).filter(k => LOTS.some(l => k.startsWith(l.id + ':')));
+  S.cleared = (S.cleared || []).filter(k => k.startsWith('home:') || LOTS.some(l => k.startsWith(l.id + ':')));
+  for (const o of homeBushes) { if (isCleared(o)) o.visible = false; else if (hitsOn(o)) sizeByHits(o); }
   const wood = new THREE.MeshStandardMaterial({ color: 0x8a5a34, roughness: 0.85 });
   for (const l of LOTS) {
     const v = lotView[l.id] = { weeds: new THREE.Group() }, R = mulberry32(977 * (l.i + 3));
@@ -3260,8 +3378,13 @@ function nearLotSign() {
   const s = lotSignPos(); return Math.hypot(s.x - player.pos.x, s.z - player.pos.z) < 1.9 ? l : null;
 }
 function nearWeed() {
-  if (!inBoughtLot(player.pos.x, player.pos.z + 0.6)) return null;
   let best = null, bd = 1.6;
+  for (const o of homeBushes) {   // the starting lot's bushes
+    if (!o.visible || isCleared(o)) continue;
+    const d = Math.hypot(o.position.x - player.pos.x, o.position.z - player.pos.z) - (o.userData.r || 0);
+    if (d < bd) { bd = d; best = o; }
+  }
+  if (!inBoughtLot(player.pos.x, player.pos.z + 0.6)) return best;
   for (const l of LOTS) {
     if (!lotOwned(l.id)) continue;
     for (const o of lotView[l.id].weeds.children) {
@@ -3393,7 +3516,7 @@ function setOutline(o) {
       const bb = new THREE.Box3().setFromObject(o), sz = bb.getSize(new THREE.Vector3()), r = Math.max(sz.x, sz.z) / 2 + 0.12;
       const ring = new THREE.Mesh(new THREE.RingGeometry(r, r + 0.09, 40), new THREE.MeshBasicMaterial({ color: OUTLINE, depthWrite: false }));
       ring.rotation.x = -Math.PI / 2; ring.position.set(o.position.x, 0.04, o.position.z); ring.userData.isHull = true; scene.add(ring); o.userData.hull.push(ring);
-    } else o.traverse(m2 => { if (m2.isMesh && !m2.userData.isHull) { const h = new THREE.Mesh(hullGeo(m2.geometry), outlineMat); h.userData.isHull = true; h.renderOrder = 5; m2.renderOrder = 6; m2.add(h); o.userData.hull.push(h); } });
+    } else o.traverse(m2 => { if (m2.isMesh && !m2.userData.isHull && !m2.userData.noHull) { const h = new THREE.Mesh(hullGeo(m2.geometry), outlineMat); h.userData.isHull = true; h.renderOrder = 5; m2.renderOrder = 6; m2.add(h); o.userData.hull.push(h); } });
   }
   o.userData.hull.forEach(h => { h.visible = true; });
 }
@@ -3659,9 +3782,11 @@ document.getElementById('toMenu').addEventListener('click', () => { persistNow()
 function toastNow(t) { const el = document.getElementById('mmVer'); const v = el.textContent; el.textContent = t; setTimeout(() => { el.textContent = v; }, 1800); }
 
 // ---------- bag ----------
-const KIND_ORDER = { fish: 0, crop: 1, seed: 2, bait: 3, feed: 4, fert: 4, decor: 5 };
+const KIND_ORDER = { fish: 0, crop: 1, seed: 2, grass: 2, bait: 3, feed: 4, fert: 4, decor: 5 };
+const GRASS_SVG = (sz) => `<svg class="grassic" viewBox="0 0 40 40" width="${sz}" height="${sz}"><g fill="#4caf50" stroke="#2b2140" stroke-width="1.6" stroke-linejoin="round"><path d="M19 35 C18 27 12 21 3 16 C14 15 23 22 24 33 Z"/><path d="M21 35 C22 26 28 19 37 13 C33 22 30 28 28 35 Z" fill="#3f9a4a"/><path d="M15 35 C13 22 15 11 20 3 C25 11 27 22 25 35 Z" fill="#5cc46a"/></g><ellipse cx="20" cy="36" rx="10" ry="2.2" fill="#8a5a34"/></svg>`;
 function itemIcon(id) {
   const it = ITEMS[id], col = RARITY[it.rarity].color;
+  if (it.kind === 'grass') return `<span class="ic seedpk">${GRASS_SVG(20)}</span>`;
   if (it.kind === 'crop') { const sc = it.special ? SPECIAL[it.special].color : col; return `<span class="ic${it.special ? ' sp-' + it.special : ''}" style="background:${sc}22;border:2px solid ${sc}">${cropImg(it.base || id, 26)}</span>`; }
   if (it.kind === 'seed') return `<span class="ic seedpk">${cropImg(it.crop, 20)}</span>`;
   const k = it.kind === 'fish' ? 'fish' : it.kind === 'crop' ? 'fruit' : it.kind === 'bait' ? id : it.kind === 'feed' ? 'feed' : it.kind === 'fert' ? 'fert' : it.kind === 'decor' ? it.decor : 'seeds';
@@ -3926,7 +4051,8 @@ function update(dt) {
   waterUniforms.uTime.value = elapsed;
   // movement
   updateSit(dt);   // SIT
-  let mv = dlg.open || farm.mode !== 'off' || ward.on || fishing.state === 'fight' /* REEL: the thumb steers the fish */ || sit.w > 0 /* SIT */ ? new THREE.Vector3() : new THREE.Vector3(joy.dx, 0, joy.dy);
+  updateGrass(dt);   // SIT-GRASS
+  let mv = dlg.open || farm.mode !== 'off' || ward.on || fishing.state === 'fight' /* REEL: the thumb steers the fish */ || sit.w > 0 /* SIT */ || (body && anim.sitting(body)) /* SIT-GRASS */ ? new THREE.Vector3() : new THREE.Vector3(joy.dx, 0, joy.dy);
   tickWardrobe(dt);
   placeUndo(); tickClear(dt); tickPoofs(dt); tickChips(dt); tickDig(dt); tickSaleBubble(); cargo.tick(dt); spots.frame(); dex.frame(dt); tackle.frame();   // FISHING, TACKLE
   let mag = Math.min(1, mv.length());
@@ -4186,6 +4312,7 @@ function frame() {
     respawnDecor: (rec) => { despawnDecor(rec); spawnDecor(rec); }, fenceZ: () => FENCE_Z, wet: (x, z) => spots.onBank(x, z), busy: () => decor.on || farm.mode !== 'off' || fishing.state !== 'idle' || ward.on || dlg.open });
   // PETS: everything pets.js borrows from this file (before saved decor is put back: the fish bowl is decor)
   pets.init({ THREE, scene, camera, groundY, floorY, parseGLB, player, get S() { return S; }, ICON, svg, commit, addItem, invCount, addXP, toast, audio, renderHotbar, currentTOD, walkable, solid: petSolid, fishing, addSplash, WATER_Y, DOCK,
+    rest: () => grass.on && body && body.sit && body.sit.w > 0.6 ? { x: player.pos.x, z: player.pos.z, yaw: player.yaw } : null,   // SIT-GRASS: where the pet curls up
     npcs: () => [higgins, fishel, pike, rosa].filter(Boolean).map(n => n.pos), busy: () => decor.on || farm.mode !== 'off' || ward.on || dlg.open || store.inside(),
     removeDecor: (rec) => { despawnDecor(rec); const i = S.decor.indexOf(rec); if (i >= 0) S.decor.splice(i, 1); },
     toggleNight: () => { if (!settings.debug) { toast('Night / day works in the Debug harbor'); return; } settings.todOverride = currentTOD() === 'night' ? 'day' : 'night'; storeSettings(settings); setTOD(currentTOD()); } });
@@ -4224,7 +4351,7 @@ function frame() {
   if (S.look && !S.look.blank && S.look.pack === undefined) { S.look.pack = 'day'; S.look.packColor = '#f2a531'; setLook(body, S.look); }   // v0.1.150: looks made before the backpack get one (take it off in the Wardrobe)
   syncPackBtn();
   window.__ready = true;
-  window.__tidewell = { sit, get pike() { return pike; }, get worldRod() { return worldRod; }, get rodState() { return rodState; }, scenery, pets, get merchant() { return merchant; }, THREE, scene, sun, hemi, TOD, camera, player, get S() { return S; }, fishing, settings, decor, cropIcon, farm, get body() { return body; }, fishIcon, spots, dex, tackle, reel, farmToolMesh, plots, lotView, get clr() { return clr; }, inRock, get dig() { return digModels; }, setLook: (l) => { for (const b of Object.values(bodies)) setLook(b, l); }, joy };   // used by tools/ (screenshots, tests)
+  window.__tidewell = { renderer, farmApply, animals, sit, grass, onGrass, nearAnimals, get pike() { return pike; }, get worldRod() { return worldRod; }, get rodState() { return rodState; }, scenery, pets, get merchant() { return merchant; }, THREE, scene, sun, hemi, TOD, camera, player, get S() { return S; }, fishing, settings, decor, cropIcon, farm, get body() { return body; }, fishIcon, spots, dex, tackle, reel, farmToolMesh, plots, lotView, get clr() { return clr; }, inRock, get dig() { return digModels; }, setLook: (l) => { for (const b of Object.values(bodies)) setLook(b, l); }, joy };   // used by tools/ (screenshots, tests)
   clock.getDelta();
   requestAnimationFrame(frame);
   // Everything else loads quietly in the background, one pack at a time so the game stays smooth:

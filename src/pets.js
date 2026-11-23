@@ -333,6 +333,20 @@ function follow(R, dt, canSide) {
   stand(R, dt); const L = R.look || P; face(R, L.x, L.z, dt);
   return 'pause';
 }
+// SIT-GRASS (try/sit): while you sit on the grass the pet out with you comes to your side and curls up
+// (the puppy lies down, the cat loafs, the fish floats low). No 💤: it's resting with you, not asleep.
+function curlSpot(R) {
+  const rs = A.rest && A.rest(); if (!rs) return null;
+  const rx = Math.cos(rs.yaw), rz = -Math.sin(rs.yaw), fx_ = Math.sin(rs.yaw), fz = Math.cos(rs.yaw), side = R.k === 'cat' ? -1 : 1;
+  for (const sd of [side, -side]) { const x = rs.x + rx * 0.62 * sd + fx_ * 0.12, z = rs.z + rz * 0.62 * sd + fz * 0.12; if (R.k === 'fish' || ok(x, z)) return { x, z, yaw: rs.yaw }; }
+  return null;
+}
+function curlUp(R, c, dt) {   // returns true once it's there and curled
+  const d = Math.hypot(c.x - R.x, c.z - R.z);
+  if (d > 0.12 && !(R.curl0 && d < 0.35)) { step(R, c.x, c.z, Math.min(4, 0.9 + d * 2.5), dt, R.k === 'fish'); R.curl = false; if (R.stuck > 1.5) { R.x = c.x; R.z = c.z; R.stuck = 0; } return false; }
+  stand(R, dt); let dy = c.yaw - R.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); R.yaw += dy * Math.min(1, dt * 3);
+  R.curl = true; return true;
+}
 function nearestThing(R) {
   let best = null, bd = 5;
   for (const n of A.npcs()) { const d = Math.hypot(n.x - R.x, n.z - R.z); if (d < bd) { bd = d; best = n; } }
@@ -365,7 +379,7 @@ function tickFish(p, R, dt, elapsed, night, held) {
   const toBowl = away && !!bowl && (night || p.with);            // the bowl is its night bed; by day a fish that isn't with you plays in the sea (Mac, v0.1.104)
   let jump = 0;
   let gy = A.floorY(R.x, R.z) + K.fish.height, scale = 1, showBub = true;
-  R.doze = false; R.out = false;
+  R.doze = false; R.out = false; R.curl0 = R.curl; R.curl = false;
   if (toBowl) {                                                   // in its bowl: asleep at night
     const bx = bowl.x + 0.5, bz = bowl.z + 0.5, d = Math.hypot(bx - R.x, bz - R.z);
     if (!R.inBowl) { if (d > 14) { R.x = bx; R.z = bz; } step(R, bx, bz, Math.min(6, 1.5 + d * 2), dt, true); if (d < 0.12) { R.inBowl = true; A.addSplash(bx, bz, true); } gy = A.floorY(R.x, R.z) + Math.max(K.fish.height, BOWL_Y + 0.45 * Math.min(1, 2 / (d + 0.01))); }
@@ -410,6 +424,8 @@ function tickFish(p, R, dt, elapsed, night, held) {
       if (R.swim) {                                                // back from the water: fly until there's ground under it
         step(R, P.x, P.z, 5, dt, true); gy = Math.max(A.floorY(R.x, R.z), A.WATER_Y) + K.fish.height + 0.2;
         if (ok(R.x, R.z) || dP < 0.6) R.swim = false;
+      } else if (!held && curlSpot(R)) {                             // SIT-GRASS: floats low beside you while you sit
+        if (curlUp(R, curlSpot(R), dt)) gy = A.floorY(R.x, R.z) + 0.3; showBub = false;
       } else if (night && idleT > 6 && dP < PETS.roam + 0.6) {     // no bowl yet: dozes beside you at night
         R.doze = true; gy = A.floorY(R.x, R.z) + 0.3; stand(R, dt);
       } else if (follow(R, dt, false) === 'pause') {
@@ -419,15 +435,15 @@ function tickFish(p, R, dt, elapsed, night, held) {
   }
   R.y += (gy - R.y) * Math.min(1, dt * (jump > 0 ? 20 : R.wet || R.inBowl ? 7 : 4));
   R.k1 += (scale - R.k1) * Math.min(1, dt * 6);
-  const bob = held ? 0 : R.doze ? Math.sin(elapsed * 1.1) * 0.015 : R.inBowl || R.wet ? Math.sin(elapsed * 2.4) * 0.012 : Math.sin(elapsed * 2.2) * 0.05;
+  const bob = held ? 0 : R.doze || R.curl ? Math.sin(elapsed * 1.1) * 0.015 : R.inBowl || R.wet ? Math.sin(elapsed * 2.4) * 0.012 : Math.sin(elapsed * 2.2) * 0.05;
   R.g.position.set(R.x, R.y + bob, R.z); R.g.scale.setScalar(R.k1);
   if (R.loop > 0) R.loop = Math.max(0, R.loop - dt / 0.7);
   if (R.spin > 0) R.spin = Math.max(0, R.spin - dt / 0.8);
   const ease = (t) => t * t * (3 - 2 * t);
   R.g.rotation.set(0, R.yaw + ease(1 - R.spin) * Math.PI * 4 * (R.spin > 0 ? 1 : 0), 0);
-  R.fish.rotation.x = -ease(1 - R.loop) * Math.PI * 2 * (R.loop > 0 ? 1 : 0) + (R.doze ? 0.25 : 0) + (R.sea && R.sea.j > 0 ? (R.sea.j - 0.5) * -1.6 : 0);   // nose up on the way out of a leap, down on the way in
-  R.fish.rotation.z = R.doze ? 0.35 : 0;
-  R.tail.rotation.y = Math.sin(elapsed * (R.doze ? 1.5 : 6 + R.sp * 3)) * (R.doze ? 0.12 : 0.35 + Math.min(0.3, R.sp * 0.08));
+  R.fish.rotation.x = -ease(1 - R.loop) * Math.PI * 2 * (R.loop > 0 ? 1 : 0) + (R.doze || R.curl ? 0.25 : 0) + (R.sea && R.sea.j > 0 ? (R.sea.j - 0.5) * -1.6 : 0);   // nose up on the way out of a leap, down on the way in
+  R.fish.rotation.z = R.doze || R.curl ? 0.35 : 0;
+  R.tail.rotation.y = Math.sin(elapsed * (R.doze || R.curl ? 1.5 : 6 + R.sp * 3)) * (R.doze ? 0.12 : 0.35 + Math.min(0.3, R.sp * 0.08));
   R.bub.visible = showBub && R.k1 > 0.9; R.bub.rotation.y = -R.yaw;
   R.blob.visible = R.bub.visible && !R.swim; R.blob.position.set(R.x, A.floorY(R.x, R.z) + 0.03, R.z);
 }
@@ -436,24 +452,26 @@ function tickDog(p, R, dt, elapsed, night, held) {
   const k = p.k, P = A.player.pos, house = bedRec(k);
   const away = !p.with || (night && !R.woke && !!house);
   let clip = 'Idle', speed = 1;
-  R.doze = false; R.out = false; R.atHome = false;
+  R.doze = false; R.out = false; R.atHome = false; R.curl0 = R.curl; R.curl = false;
   if (away) {                                                     // on its mat in front of the doghouse (or waiting by the dock)
     const h = !house ? waitSpot(k) : k === 'dog' ? { x: house.x + 1 + Math.sin((house.r || 0) * Math.PI / 2) * MAT_Z, z: house.z + 1 + Math.cos((house.r || 0) * Math.PI / 2) * MAT_Z } : { x: house.x + 0.5, z: house.z + 0.5 }, d = Math.hypot(h.x - R.x, h.z - R.z);   // the doghouse's mat, or in the cat basket
     if (d > 0.14) { if (d > 16 || R.stuck > 2.5) { R.x = h.x; R.z = h.z; R.stuck = 0; } else step(R, h.x, h.z, Math.min(5.5, 1.2 + d * 2.2), dt, d < 1.6); }
     else { stand(R, dt); R.atHome = true; R.doze = night && !!house; let dy = (R.doze ? 1.1 : 0) - R.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); R.yaw += dy * Math.min(1, dt * 4); }
   } else {
     R.out = true;
+    const cs = !held && curlSpot(R);   // SIT-GRASS
     if (held) { stand(R, dt); face(R, P.x, P.z, dt); }
+    else if (cs) curlUp(R, cs, dt);
     else if (night && !house && idleT > 6 && Math.hypot(P.x - R.x, P.z - R.z) < PETS.roam + 0.6) { R.doze = true; stand(R, dt); }
     else if (follow(R, dt, true) === 'pause' && R.look) clip = 'Idle_2_HeadLow';   // sniffs toward whoever is near
   }
   if (R.shot) { R.shot.t -= dt; if (R.shot.t <= 0) R.shot = null; }
-  if (R.doze) clip = 'Death';
+  if (R.doze || R.curl) clip = 'Death';   // SIT-GRASS: lying beside you
   else if (R.sp > 3.4) { clip = 'Gallop'; speed = k === 'cat' ? Math.min(3.2, R.sp / 1.1) : Math.min(1.5, Math.max(0.8, R.sp / 5)); }
   else if (R.sp > 0.3) { clip = 'Walk'; speed = k === 'cat' ? Math.min(3.2, Math.max(0.7, R.sp / 1.1)) : Math.min(1.9, Math.max(0.7, R.sp / 1.5)); }
   else if (R.shot) clip = R.shot.name;
   anim(k, clip, dt, speed);
-  if (k === 'cat') catLoaf(R, dt, R.sp < 0.15 && !held && !R.shot, R.doze);
+  if (k === 'cat') catLoaf(R, dt, R.sp < 0.15 && !held && !R.shot, R.doze || R.curl);
   R.y = A.floorY(R.x, R.z) + (R.doze && house ? (k === 'cat' ? 0.2 : 0.04) : 0);
   R.g.position.set(R.x, R.y, R.z); R.g.rotation.set(0, R.yaw, 0);
 }

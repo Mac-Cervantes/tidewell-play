@@ -1,7 +1,7 @@
 // Tidewell game data. Everything tunable lives here as plain tables so it can be
 // exported to JSON for the Unity version later (see tools/export-data.mjs).
 
-export const VERSION = '0.1.155';
+export const VERSION = '0.1.163';
 export const VERSION_LABEL = 'BETA v' + VERSION;
 
 // Rarity tiers (decision 36). `weight` is the base chance per bite with worms.
@@ -429,6 +429,9 @@ export const PETS = {
 // Priced well above what a plot earns in that time (about 13 coins per 10 minutes), so it can't be looped for coins and works as a money sink.
 export const FERT = { minutes: 10, pack: 5, buy: 250 };   // 50 a bag since v0.1.86 (was 20): Mac wants it to be a real money sink
 ITEMS.fertilizer = { name: 'Fertilizer', kind: 'fert', rarity: 'common', price: 0, buy: FERT.buy / FERT.pack };
+// Grass seed (v0.1.161, Mac): Rosa sells it; swiped over empty tilled soil it turns the plot back to grass. Its own kind, so nothing that loops over crop seeds ever picks it.
+export const GRASS = { item: 'seed_grass', pack: 5, buy: 10 };
+ITEMS.seed_grass = { name: 'Grass seed', kind: 'grass', rarity: 'common', price: 0, buy: GRASS.buy / GRASS.pack };
 
 // REEL: the tension meter (Mac, v0.1.124). After you tap Reel! you hold to wind the fish in; it swims closer as you do.
 // A meter beside you shows how tight the line is: green, then yellow, then red. Holding pulls it tight, letting go
