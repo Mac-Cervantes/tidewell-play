@@ -211,10 +211,11 @@ export function createCargo(A) {
     document.getElementById('cgBar').innerHTML = `<span class="cbar"><i style="width:${Math.min(100, Math.round(100 * n / cap))}%"></i></span><b>${n}/${cap}</b>`;
     { const val = Object.entries(b).reduce((t, [id, k]) => t + ITEMS[id].price * k, 0), el = document.getElementById('cgVal'); el.hidden = isStar(kind) || !n; const up = val - (el.dataset.v || 0);
       el.innerHTML = `<span>This crate</span><span class="scoin"></span><b>${Math.round(val * CARGO.payMult).toLocaleString()}</b>${up > 0 && el.dataset.at === String(cargoAt) ? `<i>+${Math.round(up * CARGO.payMult).toLocaleString()}</i>` : ''}`; el.dataset.v = val; el.dataset.at = cargoAt; }
-    document.getElementById('cgHint').innerHTML = isStar(kind) ? `Wants ${starOf(kind).n} ${ITEMS[starOf(kind).item].name}. Fill it for a treasure chest!` : n ? `This one is for ${ITEMS[baseOf(Object.keys(b).find(k => b[k] > 0))].name} (any kind) until it\u2019s empty again. Tap to drop one in, hold to fill it.` : kind === 'barrel' ? 'One kind of fish per barrel. Tap to drop one in, hold to fill it.' : 'One kind of crop per crate. Tap to drop one in, hold to fill it.';
-    const mine = Object.keys(S.inv).filter(id => ITEMS[id] && S.inv[id] > 0 && fits(kind, id, b));
+    const locked = isStar(kind) && shipAway();   // Mac, v0.1.155: no filling a star request while the ship is away
+    document.getElementById('cgHint').innerHTML = locked ? 'The ship is away. Star requests wait until it\u2019s back.' : isStar(kind) ? `Wants ${starOf(kind).n} ${ITEMS[starOf(kind).item].name}. Fill it for a treasure chest!` : n ? `This one is for ${ITEMS[baseOf(Object.keys(b).find(k => b[k] > 0))].name} (any kind) until it\u2019s empty again. Tap to drop one in, hold to fill it.` : kind === 'barrel' ? 'One kind of fish per barrel. Tap to drop one in, hold to fill it.' : 'One kind of crop per crate. Tap to drop one in, hold to fill it.';
+    const mine = locked ? [] : Object.keys(S.inv).filter(id => ITEMS[id] && S.inv[id] > 0 && fits(kind, id, b));
     document.getElementById('cgHave').innerHTML = mine.length ? mine.map(id => `<button class="cgt" data-add="${id}">${itemIcon(id)}<b>×${S.inv[id]}</b></button>`).join('')
-      : `<div class="cgnone">${isStar(kind) ? `You don't have any ${ITEMS[starOf(kind).item].name} yet` : n ? 'Nothing more of that kind in your bag' : kind === 'barrel' ? 'No fish in your bag' : 'No crops in your bag'}</div>`;
+      : `<div class="cgnone">${locked ? 'Come back when the ship is in' : isStar(kind) ? `You don't have any ${ITEMS[starOf(kind).item].name} yet` : n ? 'Nothing more of that kind in your bag' : kind === 'barrel' ? 'No fish in your bag' : 'No crops in your bag'}</div>`;
     const inIt = Object.keys(b).filter(id => b[id] > 0);
     document.getElementById('cgIn').innerHTML = inIt.length ? inIt.map(id => `<button class="cgt in" data-take="${id}">${itemIcon(id)}<b>×${b[id]}</b></button>`).join('') : '<div class="cgnone">Empty</div>';
     const send = document.getElementById('cgSend'), away = shipAway();
@@ -230,6 +231,7 @@ export function createCargo(A) {
   function cargoAdd(id, all) {
     const kind = cargoBoxes()[cargoAt].kind, b = S.cargo.boxes[cargoAt];
     if (!fits(kind, id, b)) return;
+    if (isStar(kind) && shipAway()) { toast('The ship is away'); return; }
     let room = capOf(kind, cargoAt) - boxCount(b); if (room <= 0) { toast('It’s full'); return; }
     const k = Math.min(all ? room : 1, invCount(id)); if (k <= 0) return;
     addItem(id, -k); b[id] = (b[id] || 0) + k;
