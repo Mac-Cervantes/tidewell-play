@@ -56,7 +56,7 @@ const roomOf = (Hm) => Hm.holds() - birdsOf(Hm).length;
 ITEMS.egg = { name: ANIMALS.egg.name, kind: 'crop', rarity: 'common', price: ANIMALS.egg.price };   // 'crop' so the bag, Higgins, orders and the ship's crates take it as-is
 ITEMS.feed = { name: 'Chicken feed', kind: 'feed', rarity: 'common', price: 2, buy: ANIMALS.feed.buy };
 // the coop is decor that builds its own model and can't be turned (decision 49)
-DECOR.coop = { name: 'Chicken coop', model: ['town', 'wall-wood', 1], size: [3, 3], buy: ANIMALS.coop.buy, level: ANIMALS.level, turns: [0, 1, 3], build: (r) => turned(buildCoop(A.S.animals && A.S.animals.v === 2 ? A.S.animals.lv : 1), r, COOP_BACK) };   // a square, so it can turn: door to the front, right or left, never the back (Mac, v0.1.95)
+DECOR.coop = { name: 'Chicken coop', model: ['town', 'wall-wood', 1], size: [3, 3], buy: ANIMALS.coop.buy, level: ANIMALS.level, turns: [0, 1, 3], build: (r) => turned(buildCoop(A.S.animals && A.S.animals.v === 2 ? A.S.animals.lv : 1, r), r, COOP_BACK) };   // a square, so it can turn: door to the front, right or left, never the back (Mac, v0.1.95)
 ITEMS.decor_coop = { name: DECOR.coop.name, kind: 'decor', rarity: 'common', price: Math.round(ANIMALS.coop.buy / 2), buy: ANIMALS.coop.buy, decor: 'coop' };
 LEVELS[ANIMALS.level].push({ decor: 'coop' });   // shows on the town level roadmap
 ITEMS.duckegg = { name: ANIMALS.duck.egg.name, kind: 'crop', rarity: 'common', price: ANIMALS.duck.egg.price };
@@ -126,9 +126,15 @@ const SHAPE = (lv) => { const T = A.SCALE.town * (lv === 3 ? 0.62 : 0.5), n = lv
 // Homes turn like the doghouse (Mac, v0.1.95). r counts quarter turns: 0 = front to the camera, 1 = to the right, 3 = to the left.
 // The coop's hut sits half a square back from the middle of its 3 x 3 footprint, so the ramp and trough are inside it.
 const COOP_BACK = -0.5;
+// The nest box never ends up behind the hut (Mac's testers turned the coop and couldn't find the eggs). It hangs on the hut's right side,
+// which is east with the door to the camera and south with the door to the left; with the door to the right that side is north, hidden
+// behind the hut, so there the box hangs on the left side instead, which is south. window.__nestLab = false shows the old way for mockups.
+const NEST_SOUTH = true;
+const nestSide = (r) => ((window.__nestLab === undefined ? NEST_SOUTH : window.__nestLab) && (r || 0) === 1 ? -1 : 1);
+const nestX = (s, r) => (nestSide(r) > 0 ? s.nestX : s.x0 - s.T / 2 - 0.2);
 const turn = (dx, dz, r) => { const a = (r || 0) * Math.PI / 2, c = Math.cos(a), n = Math.sin(a); return [dx * c + dz * n, -dx * n + dz * c]; };
 function turned(model, r, back) { const g = new THREE.Group(); model.position.z = back; g.add(model); g.rotation.y = (r || 0) * Math.PI / 2; const top = new THREE.Group(); top.add(g); return top; }
-function buildCoop(lv) {
+function buildCoop(lv, r) {
   const g = new THREE.Group(), s = SHAPE(lv), { T, up } = s, hut = new THREE.Group();
   const piece = (name, x, y, r) => { const o = A.M.town[name].scene.clone(true); o.scale.setScalar(T); o.position.set(x, y, 0); o.rotation.y = r; hut.add(o); return o; };
   for (let i = 0; i < s.n; i++) { const x = s.x0 + i * T;
@@ -143,9 +149,9 @@ function buildCoop(lv) {
   box(0.34, 0.03, 0.62, 0xb98a5a, s.doorX, up / 2, h + 0.27, 0.36);                                     // ramp
   for (let i = 0; i < 3; i++) box(0.34, 0.02, 0.03, 0x6b4a32, s.doorX, up - 0.035 - i * 0.065, h + 0.1 + i * 0.17, 0.36);
   // nest box on the right: open top, straw inside; eggs waiting for you show here
-  const nx = s.nestX;
+  const nx = nestX(s, r), ns = nestSide(r);
   box(0.4, 0.04, 0.5, 0x8a6a4a, nx, up + 0.1, 0.1); box(0.36, 0.05, 0.46, 0xf0d070, nx, up + 0.14, 0.1);
-  box(0.4, 0.16, 0.04, 0x9a7450, nx, up + 0.18, 0.35); box(0.4, 0.16, 0.04, 0x9a7450, nx, up + 0.18, -0.15); box(0.04, 0.16, 0.5, 0x9a7450, nx + 0.2, up + 0.18, 0.1);
+  box(0.4, 0.16, 0.04, 0x9a7450, nx, up + 0.18, 0.35); box(0.4, 0.16, 0.04, 0x9a7450, nx, up + 0.18, -0.15); box(0.04, 0.16, 0.5, 0x9a7450, nx + ns * 0.2, up + 0.18, 0.1);
   for (const x of [nx - 0.15, nx + 0.17]) box(0.05, up + 0.1, 0.05, 0x6b4a32, x, (up + 0.1) / 2, 0.32);
   box(0.56, 0.08, 0.2, 0x9a7450, s.troughX, 0.04, s.troughZ);                                           // the feed trough (its yellow fill is drawn separately)
   return g;
@@ -178,7 +184,7 @@ function sync() {
   // x, z is the middle of the hut (or the pond); every spot is measured from there and turned with the building
   if (cr) { const s = SHAPE(a.lv), r = cr.r || 0, [bx, bz] = turn(0, COOP_BACK, r), x = cr.x + 1.5 + bx, z = cr.z + 1.5 + bz, y = A.groundY(x, z);
     const at = (dx, dz) => { const [tx, tz] = turn(dx, dz, r); return { x: x + tx, z: z + tz }; };
-    HOMES.coop.at = { x, z, y, s, r, hw: r % 2 ? s.hz : s.hw, hz: r % 2 ? s.hw : s.hz, nest: { ...at(s.nestX, 0.1), y: y + s.up + 0.2 }, door: at(s.doorX, s.T / 2 + 0.7), top: s.up + s.T * 1.55, trough: at(s.troughX, s.troughZ), yard: at(0, 2.7) };
+    HOMES.coop.at = { x, z, y, s, r, hw: r % 2 ? s.hz : s.hw, hz: r % 2 ? s.hw : s.hz, nest: { ...at(nestX(s, r), 0.1), y: y + s.up + 0.2 }, door: at(s.doorX, s.T / 2 + 0.7), top: s.up + s.T * 1.55, trough: at(s.troughX, s.troughZ), yard: at(0, 2.7) };
   } else HOMES.coop.at = null;
   if (pr) { const r = pr.r || 0, x = pr.x + 1, z = pr.z + 1, y = A.groundY(x, z);                 // the reed nest is at the pond's front left, the feed bowl at its front right
     const at = (dx, dz) => { const [tx, tz] = turn(dx, dz, r); return { x: x + tx, z: z + tz }; };

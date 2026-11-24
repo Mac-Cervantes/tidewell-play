@@ -22,7 +22,7 @@ const srcs = {};                              // loaded models by kind: dog (Shi
 const rt = {};                                // each pet in the world, by kind: { g, x, z, y, yaw, sp, ... }
 const strays = {};                            // the fish jumping by the dock, the puppy in its crate
 let ui = null, ring = null, card = null, sheet = null, ray = null;
-let fx = [], fpsAvg = 60, lastT = 0, idleT = 0;
+let fx = [], fpsAvg = 60, lastT = 0, idleT = 0, restT = 0;
 const _v = { p: null };
 
 const fresh = () => ({ v: 1, list: [], day: '', fed: 0, fast: false });
@@ -360,6 +360,7 @@ export function frame(dt, elapsed) {
   tickFx(dt);
   const night = A.currentTOD() === 'night';
   idleT = A.player.moving ? 0 : idleT + dt;
+  restT = A.player.moving || (A.active && A.active()) ? 0 : restT + dt;   // farming, fishing, decorating or tapping isn't resting: the pet doesn't lie down beside you then (Mac)
   if (ring && A.player.moving) closeRing();
   for (const k of Object.keys(rt)) if (!pet(k)) despawn(k);
   for (const p of st().list) {
@@ -426,7 +427,7 @@ function tickFish(p, R, dt, elapsed, night, held) {
         if (ok(R.x, R.z) || dP < 0.6) R.swim = false;
       } else if (!held && curlSpot(R)) {                             // SIT-GRASS: floats low beside you while you sit
         if (curlUp(R, curlSpot(R), dt)) gy = A.floorY(R.x, R.z) + 0.3; showBub = false;
-      } else if (night && idleT > 6 && dP < PETS.roam + 0.6) {     // no bowl yet: dozes beside you at night
+      } else if (night && restT > 6 && dP < PETS.roam + 0.6) {     // no bowl yet: dozes beside you at night
         R.doze = true; gy = A.floorY(R.x, R.z) + 0.3; stand(R, dt);
       } else if (follow(R, dt, false) === 'pause') {
         R.bubT -= dt; if (R.bubT <= 0 && R.look) { R.bubT = rnd(2.5, 5); pop('bub', R.x + Math.sin(R.yaw) * 0.3, R.y + 0.05, R.z + Math.cos(R.yaw) * 0.3); }
@@ -462,7 +463,7 @@ function tickDog(p, R, dt, elapsed, night, held) {
     const cs = !held && curlSpot(R);   // SIT-GRASS
     if (held) { stand(R, dt); face(R, P.x, P.z, dt); }
     else if (cs) curlUp(R, cs, dt);
-    else if (night && !house && idleT > 6 && Math.hypot(P.x - R.x, P.z - R.z) < PETS.roam + 0.6) { R.doze = true; stand(R, dt); }
+    else if (night && !house && restT > 6 && Math.hypot(P.x - R.x, P.z - R.z) < PETS.roam + 0.6) { R.doze = true; stand(R, dt); }
     else if (follow(R, dt, true) === 'pause' && R.look) clip = 'Idle_2_HeadLow';   // sniffs toward whoever is near
   }
   if (R.shot) { R.shot.t -= dt; if (R.shot.t <= 0) R.shot = null; }

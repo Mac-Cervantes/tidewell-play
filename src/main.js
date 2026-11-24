@@ -2303,6 +2303,8 @@ function grassDown() {
   anim.initSit(body, M.dummy, grass.kind); anim.setSit(body, true); grass.on = true; grass.body = body; player.walkTo = null;
 }
 function grassUp() { if (!grass.on) return; grass.on = false; grass.idle = 0; if (grass.body) anim.setSit(grass.body, false); }
+let touchAt = -1e9;   // when the screen was last touched: sitting down and a dozing pet both wait for hands off (Mac)
+window.addEventListener('pointerdown', () => { touchAt = performance.now(); }, true);
 function updateGrass(dt) {
   grass.dt = dt;
   if (!body || !body.puppet || !M.dummy) return;
@@ -2311,8 +2313,11 @@ function updateGrass(dt) {
   if (grass.on) { if (Math.hypot(joy.dx, joy.dy) > 0.35 || busy) grassUp(); return; }
   const still = !player.moving && !player.walkTo && Math.hypot(joy.dx, joy.dy) < 0.05 && tool === 'none' && !busy && !anim.sitting(body);
   grass.idle = still ? grass.idle + dt : 0;
+  if (grass.idle > 0 && performance.now() - touchAt < 600) grass.idle = 0;   // any tap (petting, feeding, a button) is doing something: start the wait over (Mac)
   // by the coop or pond after 5 s; anywhere else on the grass after 10 s (Mac)
-  if (onGrass(player.pos.x, player.pos.z) && grass.idle >= (window.__grassSecs ?? (nearAnimals(player.pos.x, player.pos.z) ? GRASS_SECS : GRASS_SECS_FAR))) grassDown();
+  if (onGrass(player.pos.x, player.pos.z) && grass.idle >= (window.__grassSecs ?? (nearAnimals(player.pos.x, player.pos.z) ? GRASS_SECS : GRASS_SECS_FAR))) {
+    if ([...document.querySelectorAll('.sheet')].some(x => !x.hidden)) grass.idle = 0; else grassDown();   // not while a card or menu is open
+  }
 }
 function nearWater() { return onDock(player.pos.x, player.pos.z) || player.pos.z < -2.0 || !!spots.freshTarget(player.pos.x, player.pos.z); }   // FISHING: + river and lake
 function pickUse() {
@@ -2453,25 +2458,42 @@ function renderCropIcons(ids) {
     const c = CROPS[id], [kit, name] = c.icon, o = M[kit][name].scene.clone(true);
     const raw = new THREE.Box3().setFromObject(o).getSize(new THREE.Vector3());
     // flat items (a bundle of rice or wheat) are tipped up toward the camera so they read from above
-    o.rotation.set(raw.y < 0.35 * Math.max(raw.x, raw.z) ? 1.05 : -0.15, 0.6, 0); sc.add(o);
-    const box = new THREE.Box3().setFromObject(o), ctr = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3()).length();
+    // thin crops (one stalk of rice or wheat) are drawn as a fanned bundle so the picture has some body (Mac: "I can't see what the icon is")
+    let top = o;
+    if (ICON_BUNDLE.has(id)) { top = new THREE.Group(); for (let k = -2; k <= 2; k++) { const q = k ? o.clone(true) : o; q.rotation.y = k * 0.3; top.add(q); } }
+    top.rotation.set(raw.y < 0.35 * Math.max(raw.x, raw.z) ? 1.05 : -0.15, 0.6, 0); sc.add(top);
+    const box = new THREE.Box3().setFromObject(top), ctr = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3()).length();
     cam.position.copy(ctr).add(new THREE.Vector3(0, size * 0.55, size * 1.9)); cam.lookAt(ctr);
-    r.render(sc, cam); cropIcon[id] = trimIcon(cv); sc.remove(o);
+    r.render(sc, cam); cropIcon[id] = inkIcon(cv); sc.remove(top);
   }
   r.dispose(); r.forceContextLoss();
 }
 // crop the render to the vegetable itself (models have empty space around them) and centre it
-function trimIcon(src, OUT = 64) {
+const ICON_BUNDLE = new Set(['rice', 'wheat']);
+// A crop picture that reads on a white bubble: stronger colour and a dark outline (mockup B, Mac).
+// The colour is worked out per pixel: canvas filters don't exist on every iPhone.
+function inkIcon(src, OUT = 96, R = 4) {
   const W = src.width, c2 = document.createElement('canvas'); c2.width = c2.height = W;
-  const g = c2.getContext('2d'); g.drawImage(src, 0, 0);
-  const px = g.getImageData(0, 0, W, W).data;
+  const g = c2.getContext('2d', { willReadFrequently: true }); g.drawImage(src, 0, 0);
+  const im = g.getImageData(0, 0, W, W), px = im.data;
   let x0 = W, y0 = W, x1 = -1, y1 = -1;
-  for (let y = 0; y < W; y++) for (let x = 0; x < W; x++) if (px[(y * W + x) * 4 + 3] > 16) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  for (let y = 0; y < W; y++) for (let x = 0; x < W; x++) {
+    const i = (y * W + x) * 4; if (px[i + 3] <= 16) continue;
+    if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+    const gr = px[i] * 0.3 + px[i + 1] * 0.59 + px[i + 2] * 0.11;
+    for (let k = 0; k < 3; k++) { let v = (gr + (px[i + k] - gr) * 1.55) * 0.86; v = (v - 128) * 1.18 + 128; px[i + k] = v < 0 ? 0 : v > 255 ? 255 : v; }
+  }
   if (x1 < 0) return src.toDataURL('image/png');
-  const side = Math.max(x1 - x0, y1 - y0) + 1, pad = Math.round(side * 0.06), out = document.createElement('canvas');
-  out.width = out.height = OUT;
-  const k = OUT / (side + pad * 2), w = (x1 - x0 + 1) * k, h = (y1 - y0 + 1) * k;
-  out.getContext('2d').drawImage(src, x0, y0, x1 - x0 + 1, y1 - y0 + 1, (OUT - w) / 2, (OUT - h) / 2, w, h);
+  g.putImageData(im, 0, 0);
+  const side = Math.max(x1 - x0, y1 - y0) + 1, room = OUT - 2 * (R + 2), k = room / side, w = (x1 - x0 + 1) * k, h = (y1 - y0 + 1) * k;
+  const pic = document.createElement('canvas'); pic.width = pic.height = OUT;
+  const pg = pic.getContext('2d'); pg.drawImage(c2, x0, y0, x1 - x0 + 1, y1 - y0 + 1, (OUT - w) / 2, (OUT - h) / 2, w, h);
+  const sil = document.createElement('canvas'); sil.width = sil.height = OUT;
+  const sg = sil.getContext('2d'); sg.drawImage(pic, 0, 0); sg.globalCompositeOperation = 'source-in'; sg.fillStyle = '#2b2140'; sg.fillRect(0, 0, OUT, OUT);
+  const out = document.createElement('canvas'); out.width = out.height = OUT;
+  const og = out.getContext('2d');
+  for (let a = 0; a < 16; a++) og.drawImage(sil, Math.cos(a / 16 * Math.PI * 2) * R, Math.sin(a / 16 * Math.PI * 2) * R);
+  og.drawImage(pic, 0, 0);
   return out.toDataURL('image/png');
 }
 // like trimIcon but keeps the picture's own shape (a long fish stays long), longest side = MAX
@@ -4313,6 +4335,7 @@ function frame() {
   // PETS: everything pets.js borrows from this file (before saved decor is put back: the fish bowl is decor)
   pets.init({ THREE, scene, camera, groundY, floorY, parseGLB, player, get S() { return S; }, ICON, svg, commit, addItem, invCount, addXP, toast, audio, renderHotbar, currentTOD, walkable, solid: petSolid, fishing, addSplash, WATER_Y, DOCK,
     rest: () => grass.on && body && body.sit && body.sit.w > 0.6 ? { x: player.pos.x, z: player.pos.z, yaw: player.yaw } : null,   // SIT-GRASS: where the pet curls up
+    active: () => farm.mode !== 'off' || decor.on || fishing.state !== 'idle' || performance.now() - touchAt < 600,   // you're doing something, even standing still
     npcs: () => [higgins, fishel, pike, rosa].filter(Boolean).map(n => n.pos), busy: () => decor.on || farm.mode !== 'off' || ward.on || dlg.open || store.inside(),
     removeDecor: (rec) => { despawnDecor(rec); const i = S.decor.indexOf(rec); if (i >= 0) S.decor.splice(i, 1); },
     toggleNight: () => { if (!settings.debug) { toast('Night / day works in the Debug harbor'); return; } settings.todOverride = currentTOD() === 'night' ? 'day' : 'night'; storeSettings(settings); setTOD(currentTOD()); } });
