@@ -253,7 +253,7 @@ export function create(A, { STORE }) {
   function closeList() { if (list && !list.el.hidden) { list.el.hidden = true; A.audio.play('popClose'); } }
   function paintList() {
     for (const b of list.el.querySelectorAll('[data-tab]')) b.classList.toggle('on', b.dataset.tab === tab);
-    const kind = tab === 'extra' ? 'extra' : tab === 'tools' ? 'tool' : 'decor', ids = tab === 'extra' ? Object.keys(STORE.extra.items) : tab === 'tools' ? STORE.tools : STORE.decor;
+    const kind = tab === 'extra' ? 'extra' : tab === 'tools' ? 'tool' : 'decor', ids = tab === 'extra' ? Object.keys(STORE.extra.items).filter(id => !STORE.extra.items[id].hidden || !STORE.extra.items[id].hidden())   /* RANCH: an item can stay off the list until it's time (the bridge blueprint) */ : tab === 'tools' ? STORE.tools : STORE.decor;
     list.el.querySelector('.grid').innerHTML = ids.map(id => { const it = info(kind, id), lk = locked(it);
       return `<button class="tile${lk ? ' locked' : ''}${it.own ? ' own' : ''}" data-kind="${kind}" data-item="${id}" aria-label="${it.name}${lk ? ', opens at town level ' + it.level : it.own ? ', yours' : ', ' + it.price + ' coins'}"><span class="tp">${picOf(kind, id)}</span><span class="pr">${it.own ? A.svg('check', '#2f7d32', 16, 3.2) + ' yours' : lk ? `${A.svg('lock', '#6a5f7c', 13, 2.6)}<span class="stlv">${it.level}</span>` : coin + it.price}</span></button>`; }).join('');
   }

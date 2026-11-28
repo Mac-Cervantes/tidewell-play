@@ -81,6 +81,33 @@ function noise(o) {
   src.connect(fl); fl.connect(g); out(g, o.bus || cur || sfx, o.send);
   src.start(t, Math.random() * 1.5); src.stop(t + o.dur + 0.05);
 }
+function moo(t, f0) {
+  var osc = ctx.createOscillator(), fl = ctx.createBiquadFilter(), g = ctx.createGain(), lfo = ctx.createOscillator(), lg = ctx.createGain(), end = t + (f0 > 200 ? 0.6 : 0.95);
+  osc.type = 'sawtooth'; osc.frequency.setValueAtTime(f0, t); osc.frequency.linearRampToValueAtTime(f0 * 1.2, t + 0.22); osc.frequency.exponentialRampToValueAtTime(f0 * 0.8, end);
+  lfo.frequency.value = 5; lg.gain.value = f0 * 0.018; lfo.connect(lg); lg.connect(osc.frequency);
+  fl.type = 'lowpass'; fl.Q.value = 2; fl.frequency.setValueAtTime(450, t); fl.frequency.linearRampToValueAtTime(1000, t + 0.25); fl.frequency.exponentialRampToValueAtTime(380, end);
+  g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.1, t + 0.12); g.gain.setValueAtTime(0.1, end - 0.35); g.gain.exponentialRampToValueAtTime(0.0001, end);
+  osc.connect(fl); fl.connect(g); out(g, cur || sfx, 0.12);
+  osc.start(t); lfo.start(t); osc.stop(end + 0.05); lfo.stop(end + 0.05);
+}
+// RANCH: "baa" and "maa": a nasal buzz with a fast wobble; "oink": a short grunt through a narrow filter
+function bleat(t, f0, dur) {
+  var osc = ctx.createOscillator(), fl = ctx.createBiquadFilter(), g = ctx.createGain(), lfo = ctx.createOscillator(), lg = ctx.createGain(), end = t + dur;
+  osc.type = 'sawtooth'; osc.frequency.setValueAtTime(f0, t); osc.frequency.linearRampToValueAtTime(f0 * 1.08, t + dur * 0.3); osc.frequency.exponentialRampToValueAtTime(f0 * 0.85, end);
+  lfo.frequency.value = 13; lg.gain.value = f0 * 0.05; lfo.connect(lg); lg.connect(osc.frequency);
+  fl.type = 'bandpass'; fl.Q.value = 1.6; fl.frequency.setValueAtTime(f0 * 3, t);
+  g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.12, t + 0.06); g.gain.setValueAtTime(0.12, end - 0.2); g.gain.exponentialRampToValueAtTime(0.0001, end);
+  osc.connect(fl); fl.connect(g); out(g, cur || sfx, 0.1);
+  osc.start(t); lfo.start(t); osc.stop(end + 0.05); lfo.stop(end + 0.05);
+}
+function oink(t, f0) {
+  var osc = ctx.createOscillator(), fl = ctx.createBiquadFilter(), g = ctx.createGain(), end = t + 0.14;
+  osc.type = 'sawtooth'; osc.frequency.setValueAtTime(f0, t); osc.frequency.exponentialRampToValueAtTime(f0 * 0.7, end);
+  fl.type = 'bandpass'; fl.Q.value = 3; fl.frequency.setValueAtTime(900, t); fl.frequency.exponentialRampToValueAtTime(600, end);
+  g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.16, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, end);
+  osc.connect(fl); fl.connect(g); out(g, cur || sfx, 0.08);
+  osc.start(t); osc.stop(end + 0.05);
+}
 function bell(f, t, v, dur, bus) {
   dur = dur || 0.5;
   tone({ t: t, f: f, dur: dur, v: v, send: 0.25, bus: bus });
@@ -275,6 +302,13 @@ var S = {
   },
   quack: function (t) { [0, 0.16].forEach(function (d) { tone({ t: t + d, f: rnd(400, 440), to: 290, dur: 0.11, a: 0.006, v: 0.05, type: 'sawtooth' }); tone({ t: t + d, f: 860, to: 600, dur: 0.09, a: 0.006, v: 0.02, type: 'square' }); }); },
   peep: function (t) { tone({ t: t, f: rnd(2300, 2600), to: 3300, dur: 0.07, a: 0.004, v: 0.045 }); tone({ t: t + 0.11, f: 2500, to: 3400, dur: 0.06, a: 0.004, v: 0.035 }); },
+  // RANCH (try/ranch): a soft, low "mooo" (a filtered buzz that rises then sags), and a higher one for the calf
+  moo: function (t) { moo(t, 150); },
+  mooLittle: function (t) { moo(t, 255); },
+  mooBig: function (t) { moo(t, 110); },
+  baa: function (t) { bleat(t, 330, 0.55); }, baaLittle: function (t) { bleat(t, 520, 0.4); },
+  maa: function (t) { bleat(t, 400, 0.45); }, maaLittle: function (t) { bleat(t, 600, 0.35); },
+  oink: function (t) { oink(t, 230); oink(t + 0.2, 210); }, oinkLittle: function (t) { oink(t, 380); oink(t + 0.16, 360); },
   eggPop: function (t) { tone({ t: t, f: 420, to: 880, dur: 0.12, a: 0.004, v: 0.11, type: 'triangle' }); tone({ t: t + 0.1, f: 1320, dur: 0.16, a: 0.003, v: 0.05, send: 0.2 }); }
 };
 

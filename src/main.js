@@ -13,6 +13,9 @@ import CHIPS from './wardrobe-chips.js';
 import { loadSave, storeSave, resetSave, peekSave, loadSettings, storeSettings, storageWorks } from './save.js';
 import { audio } from './audio.js';   // all sound lives in audio.js; the calls below are one-line hooks
 import { weather } from './weather.js';   // rain lives in weather.js; hooks: initWeather(), weather.frame(), renderWx()
+import * as ranch from './ranch.js';   // RANCH (try/ranch): wild cows that roam the grass; hooks marked RANCH below
+import * as bridge from './bridge.js';   // RANCH: the bridge over the big lake
+import * as pen from './pen.js';   // RANCH (try/ranch): the cow pen, milk, wood and driftwood live in pen.js; hooks marked RANCH below
 import * as animals from './animals.js';   // ANIMALS (try/chickens): coop, hens and eggs live in animals.js; hooks marked ANIMALS below
 import * as pets from './pets.js';   // PETS (try/pets): the companion that follows you lives in pets.js; hooks marked PETS below
 import * as anim from './anim.js';   // ANIM (try/run): walk/run/idle live in anim.js; hooks marked ANIM below
@@ -416,6 +419,7 @@ const townFence = [];   // fence pieces and gate banners, moved together
 // PETS: is this spot inside something a pet shouldn't pass through (people, stalls, the board, the store, the coop)?
 const _ps = { a: null, b: null };
 function petSolid(x, z) {
+  if (pen.solid(x, z)) return true;   // RANCH: the cow pen and its milk can
   for (const n of [higgins, fishel, pike, rosa]) if (n && n.pos && Math.hypot(x - n.pos.x, z - n.pos.z) < 0.6) return true;
   if (Math.abs(x - FISHEL_STALL.x) < 1.3 && Math.abs(z - FISHEL_STALL.z) < 1.05) return true;
   if (rosa) { const c = Math.cos(ROSA_CART.r), sn = Math.sin(ROSA_CART.r), dx = x - ROSA_CART.x, dz = z - ROSA_CART.z; if (Math.abs(dx * c - dz * sn) < 1.0 && Math.abs(dx * sn + dz * c) < 1.5) return true; }
@@ -424,7 +428,7 @@ function petSolid(x, z) {
   for (const blk of [store.block, animals.block]) { _ps.a.set(x, 0, z); _ps.b.set(x + 9, 0, z - 9);   /* a 'from' point that can never lean on the store's door */ blk(_ps.a, _ps.b); if (_ps.a.x !== x || _ps.a.z !== z) return true; }
   return false;
 }
-function walkable(x, z) { return (z >= -3.4 || onDock(x, z)) && (!spots.isWet(x, z) || tackle.onDeck(x, z)) &&   /* FISHING: no walking into the river or lake; TACKLE: except on the jetty */ !(inRock(x, z) && !inRock(player.pos.x, player.pos.z)); }
+function walkable(x, z) { return (z >= -3.4 || onDock(x, z)) && (!spots.isWet(x, z) || tackle.onDeck(x, z) || bridge.onDeck(x, z)) &&   /* FISHING: no walking into the river or lake; TACKLE: except on the jetty */ !(inRock(x, z) && !inRock(player.pos.x, player.pos.z)); }
 function inRock(x, z) { for (const o of solids) if (o.visible && Math.hypot(o.position.x - x, o.position.z - z) < o.userData.solidR) return true; return false; }
 // The Kenney dock section has 3 planks between its side rails. Rebuild its mesh 4 planks wide:
 // the left side (rail, posts, braces, plank) moves out half a plank, the right side likewise,
@@ -458,6 +462,7 @@ function widenDock(obj) {
 const ray = new THREE.Raycaster(); const DOWN = new THREE.Vector3(0, -1, 0);
 function floorY(x, z) {
   { const dk = tackle.deckY(x, z); if (dk !== null) return dk; }   // TACKLE: standing on the lake jetty
+  { const dk = bridge.deckY(x, z); if (dk !== null) return dk; }   // RANCH: or on the bridge over the lake
   const g = groundY(x, z);
   if (z > -2.6 || Math.abs(x - DOCK.x) > DOCK.half + 0.6) return g;
   // check across the player's width: the dock end has a gap between its planks down the middle
@@ -1059,7 +1064,7 @@ const endJoy = (e) => {
   const quick = !joy.far && !wasAim && e.timeStamp - joy.t0 < 300;
   joy.id = null; joy.dx = joy.dy = 0; joyBase.hidden = true;
   if (wasAim) endAim(e.type === 'pointerup');
-  else if (quick && e.type === 'pointerup') { if (decor.on) decorTap(e.clientX, e.clientY); else if (!pets.tap(e.clientX, e.clientY) && !animals.tap(e.clientX, e.clientY)) handleTap(e.clientX, e.clientY); }   /* PETS: a tap on your pet opens its buttons */   // ANIMALS: a tap on the coop or pond opens its card
+  else if (quick && e.type === 'pointerup') { if (decor.on) decorTap(e.clientX, e.clientY); else if (!(pen.building() && pen.tap(e.clientX, e.clientY)) && !pets.tap(e.clientX, e.clientY) && !animals.tap(e.clientX, e.clientY) && !ranch.tap(e.clientX, e.clientY) && !pen.tap(e.clientX, e.clientY)) handleTap(e.clientX, e.clientY); }   /* PETS: a tap on your pet opens its buttons */   // ANIMALS: a tap on the coop or pond opens its card
 };
 canvas.addEventListener('pointerup', endJoy); canvas.addEventListener('pointercancel', endJoy);
 document.addEventListener('gesturestart', e => e.preventDefault());
@@ -1237,7 +1242,23 @@ function castTarget() {
   return p;
 }
 function castTargetFar() {
-  const ft = player.pos.z > -2.6 ? spots.freshTarget(player.pos.x, player.pos.z) : null; if (ft) return new THREE.Vector3(ft.x, 0, ft.z);   // FISHING: by the river or lake, cast there
+  const ft = player.pos.z > -2.6 ? spots.freshTarget(player.pos.x, player.pos.z) : null;   // FISHING: by the river or lake, cast there
+  if (ft) {   // RANCH: never onto the bridge or the jetty: on past it, into the water
+    const dx = ft.x - player.pos.x, dz = ft.z - player.pos.z, d = Math.hypot(dx, dz) || 1, deck = (x, z) => bridge.onDeck(x, z, 0.35) || tackle.onDeck(x, z);
+    const at = (r) => ({ x: player.pos.x + dx / d * r, z: player.pos.z + dz / d * r }), free = (q) => !deck(q.x, q.z) && spots.wetness(q.x, q.z) > 0.9;
+    if (deck(ft.x, ft.z)) {   // first a little nearer (still past the rod's tip), else on over it
+      let q = null;
+      for (let r = d - 0.3; r >= 1.9 && !q; r -= 0.3) if (free(at(r))) q = at(r);
+      for (const ang of [0.45, -0.45, 0.9, -0.9]) {   // then a little to either side, on your own side of it
+        const c = Math.cos(ang), n = Math.sin(ang), ux = (dx * c - dz * n) / d, uz = (dx * n + dz * c) / d;
+        for (let r = 3.2; r >= 1.9 && !q; r -= 0.3) { const p2 = { x: player.pos.x + ux * r, z: player.pos.z + uz * r }; if (free(p2) && free({ x: player.pos.x + ux * (r - 0.6), z: player.pos.z + uz * (r - 0.6) })) q = p2; }
+        if (q) break;
+      }
+      for (let r = d + 0.3; r <= d + 4.5 && !q; r += 0.3) if (free(at(r))) q = at(r);
+      if (q) { ft.x = q.x; ft.z = q.z; }
+    }
+    return new THREE.Vector3(ft.x, 0, ft.z);
+  }
   // aim the way you face; if you face inland, aim out to sea
   const f = new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw));
   if (onDock(player.pos.x, player.pos.z)) { if (Math.abs(f.x) < 0.35 && f.z > -0.5) f.set(Math.sign(f.x || 1), 0, -0.4); }
@@ -1278,7 +1299,7 @@ function reelIn() { if (fishing.state !== 'idle' && fishing.state !== 'reel') { 
 // AIM (v0.1.129, mockup C): the landing spot for Cast, and a hand teaching the water tap until you've tap-cast twice
 aimHint = createAimHint({ THREE, camera, handSrc: './assets/ui/hand.svg' }); const aim2 = { t: 0, at: null, tap: null };
 const AIM_TAPS = 2;
-function aimWater(x, z) { return (spots.isWet(x, z) || z < -5.4) && !onDock(x, z) && !tackle.onDeck(x, z) && !shipBlocks(player.pos.x, player.pos.z, x, z); }
+function aimWater(x, z) { return (spots.isWet(x, z) || z < -5.4) && !onDock(x, z) && !tackle.onDeck(x, z) && !bridge.onDeck(x, z, 0.2) && !shipBlocks(player.pos.x, player.pos.z, x, z); }
 function updateAimHint(dt) {
   const on = tool === 'rod' && fishing.state === 'idle' && useAction && useAction.kind === 'cast' && !useBtn.hidden && !decor.on && !busyForLevelCard();
   if (!on) { if (aim2.at) { aim2.at = null; aimHint.update(null); } aim2.t = 0; return; }
@@ -1482,6 +1503,7 @@ function tillable(c) {
   if (Math.abs(c.x) > 11 && !(c.z > 6 && inBoughtLot(c.x + 0.5, c.z + 0.5) && Math.abs(c.x + 0.5) < 13.4)) return false;
   if (weedBlocks(c.x + ',' + c.z)) return false;
   if (decorOcc.has(c.x + ',' + c.z)) return false;
+  if (pen.taken(c.x, c.z)) return false;   // RANCH: the cow pen
   return !NO_TILL.some(([x, z, r]) => Math.hypot(c.x + 0.5 - x, c.z + 0.5 - z) < r);
 }
 let plotMat, rowMat;
@@ -1733,6 +1755,27 @@ function doAction(a) {
     history.push({ kind: 'harvest', key: cellKey(a.plot.cell), n: got.n, item: got.item, roll: got.roll, plantedAt, crop });
   }
 }
+// RANCH (Mac, Nov 27: "the bobber goes behind the tip of the rod sometimes"): where a tap on the water casts to.
+// - The tap used to be read off the bed under the water, so at sea (1.6 m deep) the bobber landed about 2 m beyond your finger.
+//   Now it's the spot on the water's surface.
+// - A tap closer than TAP_MIN is carried out along the same line to TAP_MIN when there's water there: the rod's tip is 1.4 m out,
+//   and a bobber nearer than that hangs behind it.
+// - A tap on the dock, the jetty or the bridge (there's water under them) goes on past the planks.
+const TAP_MIN = 2.6, tapPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -WATER_Y), _tw = new THREE.Vector3();
+function tapCastSpot(bed) {
+  const s = tapRay.ray.intersectPlane(tapPlane, _tw) ? _tw.clone() : bed.clone();
+  const P = player.pos, dx = s.x - P.x, dz = s.z - P.z, d = Math.hypot(dx, dz);
+  if (d < 0.05) return s;
+  const at = (r) => new THREE.Vector3(P.x + dx / d * r, s.y, P.z + dz / d * r), ok = (q) => aimWater(q.x, q.z);
+  if (d >= TAP_MIN && ok(s)) return s;
+  for (let r = Math.max(d, TAP_MIN); r <= Math.max(d, TAP_MIN) + 4; r += 0.3) if (ok(at(r))) return at(r);   // out to the nearest open water on that line
+  for (let r = TAP_MIN - 0.2; r > d; r -= 0.2) if (ok(at(r))) return at(r);                                   // a narrow bit of water: as far as it goes
+  for (let ring = 0.4; ring <= 3.6; ring += 0.4) for (let a = 0; a < 6.28; a += 0.52) {                       // planks all along that line: the nearest water beside them
+    const q = new THREE.Vector3(s.x + Math.sin(a) * ring, s.y, s.z + Math.cos(a) * ring);
+    if (ok(q) && Math.hypot(q.x - P.x, q.z - P.z) >= 1.9) return q;
+  }
+  return s;
+}
 // tap the ground: act on that square, walking over first if it's out of reach
 const tapRay = new THREE.Raycaster(), tapNdc = new THREE.Vector2();
 function handleTap(x, y) {
@@ -1742,7 +1785,8 @@ function handleTap(x, y) {
   const hit = tapRay.intersectObject(groundMesh, false)[0];
   if (!hit) return;
   if (tool === 'rod' && hit.point.y < WATER_Y) {
-    if (nearWater() && Math.hypot(hit.point.x - player.pos.x, hit.point.z - player.pos.z) < 11) doAction({ kind: 'cast', key: 'tap', at: hit.point.clone() });   // FISHING: only water within reach
+    const at = tapCastSpot(hit.point);   // RANCH: where your finger is on the water, and never nearer than the rod's tip
+    if (nearWater() && Math.hypot(at.x - player.pos.x, at.z - player.pos.z) < 11) doAction({ kind: 'cast', key: 'tap', at });   // FISHING: only water within reach
     else toast('Walk to the water to cast');
     return;
   }
@@ -2655,6 +2699,7 @@ function decorCellOK(k) {
   if (x >= -1 && x <= 0 && z >= -3) return false;                     // the path
   if (x >= 1 && x <= 4 && z <= -3) return false;                      // the dock entrance
   if (decorOcc.has(k) || plots.has(k)) return false;
+  if (pen.taken(x, z)) return false;   // RANCH: the cow pen
   return !NO_TILL.some(([nx, nz, r]) => Math.hypot(x + 0.5 - nx, z + 0.5 - nz) < r);
 }
 function ghostValid(gh) { return cellsOf(gh.id, gh.x, gh.z, gh.r).every(decorCellOK); }
@@ -3285,10 +3330,13 @@ let boardNotes = null, boardSig = '', noteKit = null;
 // Lots (decision 69, layout D): four full-width strips straight back into the wilds, a dirt path down the middle.
 // Buying one moves the fence and gate to its far edge. You clear each weed, rock, stump and tree yourself.
 const LOT_DEPTH = 6.75, LOT_X = 14;
-const LOTS = [0, 1, 2, 3].map(i => ({ id: 'back' + (i + 1), i, z0: FENCE_Z0 + i * LOT_DEPTH, z1: FENCE_Z0 + (i + 1) * LOT_DEPTH }));
+// The lake lot is two strips deep and one purchase; the old woods and the deep woods sit one strip further back, so there are
+// still four lots to farm plus the lake (Mac, Nov 28: "the lake lot should be one lot to buy", "push all the lots from the lake down").
+const LOT_STRIPS = [1, 2, 1, 1];
+const LOTS = LOT_STRIPS.map((n, i) => { const at = LOT_STRIPS.slice(0, i).reduce((a, b) => a + b, 0); return { id: 'back' + (i + 1), i, strips: n, z0: FENCE_Z0 + at * LOT_DEPTH, z1: FENCE_Z0 + (at + n) * LOT_DEPTH }; });
 const LOTS_BACK = LOTS[LOTS.length - 1].z1;
-const LOT_PRICES = [1000, 2500, 6000, 15000], LOT_LEVELS = [3, 5, 8, 12];   // the 1st, 2nd… lot you buy
-const LOT_NAMES = { back1: 'The meadow', back2: 'The thicket', back3: 'The old woods', back4: 'The deep woods' };
+const LOT_PRICES = [1000, 4000, 6000, 15000], LOT_LEVELS = [3, 5, 8, 12];   // the 1st, 2nd… lot you buy
+const LOT_NAMES = { back1: 'The meadow', back2: 'The lake lot', back3: 'The old woods', back4: 'The deep woods' };
 const PATH_HALF = 1.3;
 const lotView = {};   // id -> { weeds: Group }
 let saleSign = null;
@@ -3329,6 +3377,10 @@ function tickSaleBubble() {
   _sp.set(saleSign.position.x, saleSign.position.y + 2.5, saleSign.position.z).project(camera);
   const hw = saleEl.offsetWidth / 2 + 8; saleEl.style.left = Math.max(hw, Math.min(innerWidth - hw, (_sp.x + 1) / 2 * innerWidth)) + 'px'; saleEl.style.top = ((1 - _sp.y) / 2 * innerHeight) + 'px';
 }
+// LOT_LOOK: pine = the share of lot trees that are pines (Mac picked "a few"); rocks = boulders in three shapes, each stretched its own way.
+const LOT_LOOK = Object.assign({ pine: 0.34, rocks: 1, stretch: 0.22 }, window.__lotLab || {});
+// how much ground each wild thing needs to itself (m, as a radius); a tree's is its crown, seen from above
+const LOT_ROOM = { grass_large: 0.45, rock_smallA: 0.45, plant_bush: 0.5, stump_round: 0.55, log: 0.75, rock_largeA: 1.0, mushroom_redGroup: 0.35, plant_bushLarge: 0.7, tree_default: 0.95 };
 function buildLots(T) {
   // side lots from v0.1.35–37 are gone; no carry-over (Mac: "you can clear the saves")
   S.lots = (S.lots || []).filter(id => LOTS.some(l => l.id === id));
@@ -3339,18 +3391,61 @@ function buildLots(T) {
     const v = lotView[l.id] = { weeds: new THREE.Group() }, R = mulberry32(977 * (l.i + 3));
     // overgrown: tall grass, rocks, stumps, bushes, logs and young trees, never on the path
     const kinds = ['grass_large', 'grass_large', 'grass_large', 'rock_smallA', 'plant_bush', 'stump_round', 'grass_large', 'log', 'rock_largeA', 'mushroom_redGroup', 'plant_bushLarge', 'tree_default'];
+    const R2 = mulberry32(4421 * (l.i + 5)), R3 = mulberry32(8087 * (l.i + 2)), R4 = mulberry32(6199 * (l.i + 7)), owned = S.lots.includes(l.id);
+    // 1) where the dice put everything (the same dice as ever, so what you've cleared stays cleared)
+    const list = [];
     for (let i = 0; i < 64; i++) {
       const k = kinds[i % kinds.length];
       let x = (R() * 2 - 1) * (LOT_X - 0.9); if (Math.abs(x) < PATH_HALF + 0.7) x = Math.sign(x || 1) * (PATH_HALF + 0.7 + R() * 2);
       const z = l.z0 + 0.7 + R() * (LOT_DEPTH - 1.4);
-      const o = T(k, x, z, k === 'grass_large' ? 1.5 + R() * 0.6 : k === 'tree_default' ? 1.0 + R() * 0.3 : 1.1 + R() * 0.3);
+      list.push({ k, x, z, s: k === 'grass_large' ? 1.5 + R() * 0.6 : k === 'tree_default' ? 1.0 + R() * 0.3 : 1.1 + R() * 0.3, key: l.id + ':' + i });
+    }
+    // a lot more than one strip deep (the lake lot) gets things on its dry ground further back too
+    for (let st = 1; st < l.strips; st++) for (let i = 0; i < 64; i++) {
+      const k = kinds[i % kinds.length];
+      let x = (R4() * 2 - 1) * (LOT_X - 0.9); if (Math.abs(x) < PATH_HALF + 0.7) x = Math.sign(x || 1) * (PATH_HALF + 0.7 + R4() * 2);
+      const z = l.z0 + st * LOT_DEPTH + 0.7 + R4() * (LOT_DEPTH - 1.4), sc = k === 'grass_large' ? 1.5 + R4() * 0.6 : 1.0 + R4() * 0.3;
+      if (!spots.onBank(x, z)) list.push({ k, x, z, s: sc, key: l.id + ':b' + st + '_' + i });
+    }
+    // 2) RANCH: the lake lot is the wood lot (Mac: "make the woods regrow in one of the lots" - "The one with the lake"). The big lake
+    // covers most of it, so it gets its own stand of trees on the dry ground right of the lake. They get their room first.
+    const placed = [], room = (k) => LOT_ROOM[k] || 0.5, free = (x, z, r) => !placed.some(q => Math.hypot(q.x - x, q.z - z) < q.r + r);
+    const stand = [];
+    if (l.id === WOOD_LOT) for (let i = 0; i < 400 && stand.length < 7; i++) {
+      const x = 6.5 + R() * 6.8, z = l.z0 + 0.7 + R() * (LOT_DEPTH - 1.4);
+      if (spots.onBank(x, z) || spots.onBank(x - 0.9, z) || !free(x, z, room('tree_default') + 0.2)) continue;
+      stand.push({ k: 'tree_default', x, z, s: 1.05 + R() * 0.3, key: l.id + ':w' + stand.length, stand: true }); placed.push({ x, z, r: room('tree_default') });
+    }
+    // 3) nothing stands on top of anything else (Mac: a tree on a stump, a stump in a rock). A thing that lands on an earlier one
+    // is moved to a free spot, with its own dice so every other thing stays where it was. In a lot you already own it just goes:
+    // a new spot could land on your crops or decor.
+    for (const it of list) {
+      it.wet = spots.onBank(it.x, it.z); if (it.wet) continue;
+      const r = room(it.k);
+      if (!free(it.x, it.z, r)) {
+        it.gone = true;
+        for (let t = 0; t < 40 && it.gone && !owned; t++) {
+          let nx = (R2() * 2 - 1) * (LOT_X - 0.9); if (Math.abs(nx) < PATH_HALF + 0.7) nx = Math.sign(nx || 1) * (PATH_HALF + 0.7 + R2() * 2);
+          const nz = l.z0 + 0.7 + R2() * (l.strips * LOT_DEPTH - 1.4);
+          if (!spots.onBank(nx, nz) && free(nx, nz, r)) { it.x = nx; it.z = nz; it.gone = false; }
+        }
+      }
+      if (!it.gone) placed.push({ x: it.x, z: it.z, r });
+    }
+    // 4) the models. Variety (Mac: "give the trees a pine tree look too", boulders "the same shape over and over"): one tree in
+    // three is a pine, big rocks come in three shapes, and every rock is stretched a little its own way.
+    for (const it of [...list, ...stand]) {
+      const k = it.k, v1 = R3(), v2 = R3(), v3 = R3(), v4 = R3();
+      const model = k === 'tree_default' && v1 < LOT_LOOK.pine ? 'tree_pineRoundA' : k === 'rock_largeA' && LOT_LOOK.rocks ? ['rock_largeA', 'rock_tallA', 'rock_tallD'][Math.floor(v1 * 3)] : k;
+      const o = T(model, it.x, it.z, it.s);
+      if (LOT_LOOK.rocks && k.startsWith('rock')) { const st = LOT_LOOK.stretch; o.scale.x *= 1 - st + v2 * st * 2; o.scale.z *= 1 - st + v3 * st * 2; o.scale.y *= (model === 'rock_largeA' ? 0.85 : 0.6) + v4 * 0.35; }
       scene.remove(o); v.weeds.add(o);
       const bb = new THREE.Box3().setFromObject(o), sz = bb.getSize(new THREE.Vector3());
-      o.userData = { kind: k, key: l.id + ':' + (v.weeds.children.length - 1), h: sz.y, r: Math.min(0.6, Math.max(sz.x, sz.z) / 2 - 0.2) };
-      if (spots.onBank(x, z)) o.userData.wet = true;   // FISHING: nothing grows in the river or the lake
+      o.userData = { kind: k, key: it.key, h: sz.y, r: Math.min(0.6, Math.max(sz.x, sz.z) / 2 - 0.2) };
+      if (it.wet || it.gone) o.userData.wet = true;   // FISHING: nothing grows in the river or the lake; and no room left = not there
       if (k.startsWith('tree')) occluder(o);   // trees fade when they're between you and the camera
-      if (k === 'rock_largeA') { o.userData.solidR = Math.max(0.5, Math.min(sz.x, sz.z) / 2 * 0.85); if (!isCleared(o)) solids.push(o); }   // big rocks are solid until broken (Mac)
-      const ck = cellKey({ x: Math.floor(x), z: Math.floor(z) }); if (!weedCells.has(ck)) weedCells.set(ck, []); weedCells.get(ck).push(o);
+      if (k === 'rock_largeA') { o.userData.solidR = Math.max(0.5, Math.min(sz.x, sz.z) / 2 * 0.85); if (!isCleared(o) && !o.userData.wet) solids.push(o); }   // big rocks are solid until broken (Mac)
+      const ck = cellKey({ x: Math.floor(it.x), z: Math.floor(it.z) }); if (!weedCells.has(ck)) weedCells.set(ck, []); weedCells.get(ck).push(o);
     }
     scene.add(v.weeds);
   }
@@ -3365,6 +3460,37 @@ function buildLots(T) {
   shadowize(sign); scene.add(sign);
   saleSign = sign;
   refreshLots();
+}
+// RANCH: the wood lot. A tree sawn in the thicket leaves a stump with a sprout and is a tree again the next (real) day.
+// S.ranch.regrow = { weedKey: day it was cut }.
+const WOOD_LOT = 'back2', sprouts = new Map();
+const woodDay = () => { const d = new Date(); return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); };
+function woodLotCut(o) {
+  if (!o.userData.key.startsWith(WOOD_LOT + ':') || !/^tree/.test(o.userData.kind)) return;
+  const r = pen.st(); r.regrow = { ...(r.regrow || {}), [o.userData.key]: woodDay() };
+  toast('It will grow back tomorrow');
+}
+function sproutModel(o) {
+  const g = new THREE.Group(), m = (c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.85, flatShading: true });
+  const add = (geo, mat, x, y, z) => { const b = new THREE.Mesh(geo, mat); b.position.set(x, y, z); b.castShadow = true; g.add(b); return b; };
+  add(new THREE.CylinderGeometry(0.2, 0.26, 0.3, 8), m(0x6b4a2e), 0, 0.15, 0); add(new THREE.CylinderGeometry(0.18, 0.18, 0.02, 8), m(0xe2b77a), 0, 0.31, 0);
+  add(new THREE.CylinderGeometry(0.02, 0.03, 0.34, 5), m(0x5fae4a), 0.1, 0.47, 0); add(new THREE.IcosahedronGeometry(0.12, 0), m(0x7ed35a), 0.1, 0.69, 0); add(new THREE.IcosahedronGeometry(0.08, 0), m(0x7ed35a), 0.01, 0.57, 0.06);
+  g.position.set(o.position.x, groundY(o.position.x, o.position.z), o.position.z); scene.add(g); return g;
+}
+let woodT = 0;
+function tickWoodLot(dt) {
+  if ((woodT -= dt) > 0) return; woodT = 1;
+  const v = lotView[WOOD_LOT], r = S.ranch; if (!v || !r || !r.regrow) return;
+  const day = woodDay(); let changed = false;
+  for (const o of v.weeds.children) {
+    const cut = r.regrow[o.userData.key]; if (!cut) continue;
+    if (cut !== day || !(S.cleared || []).includes(o.userData.key)) {   // a new day: it's a tree again
+      delete r.regrow[o.userData.key]; S.cleared = (S.cleared || []).filter(k => k !== o.userData.key);
+      if (o.userData.s0 != null) o.scale.copy(o.userData.s0); o.rotation.z = 0; o.visible = true;
+      const sp = sprouts.get(o); if (sp) { scene.remove(sp); sprouts.delete(o); } changed = true;
+    } else if (!sprouts.has(o) && !poofs.some(p => p.o === o)) sprouts.set(o, sproutModel(o));
+  }
+  if (changed) commit();
 }
 const weedCells = new Map();   // cell key -> weed items on it
 const solids = [];             // big rocks you can't walk through
@@ -3384,7 +3510,7 @@ function refreshLots() {
   const back = ownedBack();
   if (back !== fenceAt) {
     const dz = back - fenceAt; fenceAt = back; FENCE_Z = back;
-    townFence.forEach(o => { o.position.z += dz; o.position.y = groundY(o.position.x, o.position.z); });
+    townFence.forEach(o => { o.position.z += dz; o.position.y = groundY(o.position.x, o.position.z); o.visible = !spots.onBank(o.position.x, o.position.z) && !spots.onBank(o.position.x, 3); });   // RANCH: no fence in the lake (the river rule was already there)
     recolorGround();
   }
   if (saleSign) {
@@ -3394,7 +3520,13 @@ function refreshLots() {
   if (signCount !== (S.lots || []).length || signLevel !== S.level) { signCount = (S.lots || []).length; signLevel = S.level; saleFor = undefined; }
 }
 let signLevel = -1, signCount = -1;
-function lotSignPos() { return { x: -2.7, z: FENCE_Z - 1.0 }; }
+function lotSignPos() {   // RANCH: the sign keeps out of the big lake
+  const x = -2.7, dry = (z) => !spots.onBank(x, z) && !spots.onBank(x, z + 0.5) && !spots.onBank(x, z - 0.5);
+  if (dry(FENCE_Z - 1.0)) return { x, z: FENCE_Z - 1.0 };
+  for (const sx of [2.7, 4.2, 5.7]) if (!spots.onBank(sx, FENCE_Z - 1.0) && !spots.onBank(sx, FENCE_Z - 1.6) && !spots.onBank(sx - 0.8, FENCE_Z - 1.2)) return { x: sx, z: FENCE_Z - 1.0 };   // the lake laps the fence here: just right of the path
+  for (let z = FENCE_Z - 1.25; z > FENCE_Z0; z -= 0.25) if (dry(z)) return { x, z };   // the fence crosses the lake: the first dry spot back toward home
+  return { x, z: FENCE_Z - 1.0 };
+}   // RANCH: when the back fence crosses the lake, the sign stands on the near shore
 function nearLotSign() {
   const l = LOTS.find(lotForSale); if (!l) return null;
   const s = lotSignPos(); return Math.hypot(s.x - player.pos.x, s.z - player.pos.z) < 1.9 ? l : null;
@@ -3546,7 +3678,7 @@ const hasTool = (t) => !t || (S.tools || []).includes(t);
 const hitsNeeded = (o) => (CLEAR_NEEDS[o.userData.kind] || { hits: 1 }).hits;
 const hitsOn = (o) => (S.hits || {})[o.userData.key] || 0;
 function clearName(o) { const k = o.userData.kind; return k === 'rock_largeA' ? 'A big rock' : k === 'log' ? 'A log' : k.startsWith('tree') ? 'A tree' : k === 'stump_round' ? 'A stump' : k === 'rock_smallA' ? 'A rock' : 'A bush'; }
-function sizeByHits(o) { if (o.userData.s0 == null) o.userData.s0 = o.scale.x; o.scale.setScalar(o.userData.s0 * (1 - 0.16 * hitsOn(o) / hitsNeeded(o))); }
+function sizeByHits(o) { if (o.userData.s0 == null) o.userData.s0 = o.scale.clone(); o.scale.copy(o.userData.s0).multiplyScalar(1 - 0.16 * hitsOn(o) / hitsNeeded(o)); }   // keeps a stretched rock's shape
 const ringHits = ringEl.querySelector('.hn');
 function ringSegments(n, done, f) {
   const seg = RING_C / n, gap = n > 1 ? 7 : 0, parts = [];
@@ -3603,6 +3735,8 @@ function tickClear(dt) {
     }
     setOutline(null); (o.userData.hull || []).forEach(h => { h.visible = false; });
     S.cleared = [...(S.cleared || []), o.userData.key];
+    pen.cleared(o.userData.kind);   // RANCH: trees, logs and stumps give wood for the cow pen
+    woodLotCut(o);   // RANCH: in the wood lot a tree grows back
     if (S.hits) delete S.hits[o.userData.key];
     if (o.userData.solidR) solids.splice(solids.indexOf(o), 1);
     poofs.push({ o, t: 0, s: o.scale.x });
@@ -3804,14 +3938,14 @@ document.getElementById('toMenu').addEventListener('click', () => { persistNow()
 function toastNow(t) { const el = document.getElementById('mmVer'); const v = el.textContent; el.textContent = t; setTimeout(() => { el.textContent = v; }, 1800); }
 
 // ---------- bag ----------
-const KIND_ORDER = { fish: 0, crop: 1, seed: 2, grass: 2, bait: 3, feed: 4, fert: 4, decor: 5 };
+const KIND_ORDER = { fish: 0, crop: 1, seed: 2, grass: 2, bait: 3, feed: 4, fert: 4, wood: 4, decor: 5 };   // RANCH: wood
 const GRASS_SVG = (sz) => `<svg class="grassic" viewBox="0 0 40 40" width="${sz}" height="${sz}"><g fill="#4caf50" stroke="#2b2140" stroke-width="1.6" stroke-linejoin="round"><path d="M19 35 C18 27 12 21 3 16 C14 15 23 22 24 33 Z"/><path d="M21 35 C22 26 28 19 37 13 C33 22 30 28 28 35 Z" fill="#3f9a4a"/><path d="M15 35 C13 22 15 11 20 3 C25 11 27 22 25 35 Z" fill="#5cc46a"/></g><ellipse cx="20" cy="36" rx="10" ry="2.2" fill="#8a5a34"/></svg>`;
 function itemIcon(id) {
   const it = ITEMS[id], col = RARITY[it.rarity].color;
   if (it.kind === 'grass') return `<span class="ic seedpk">${GRASS_SVG(20)}</span>`;
   if (it.kind === 'crop') { const sc = it.special ? SPECIAL[it.special].color : col; return `<span class="ic${it.special ? ' sp-' + it.special : ''}" style="background:${sc}22;border:2px solid ${sc}">${cropImg(it.base || id, 26)}</span>`; }
   if (it.kind === 'seed') return `<span class="ic seedpk">${cropImg(it.crop, 20)}</span>`;
-  const k = it.kind === 'fish' ? 'fish' : it.kind === 'crop' ? 'fruit' : it.kind === 'bait' ? id : it.kind === 'feed' ? 'feed' : it.kind === 'fert' ? 'fert' : it.kind === 'decor' ? it.decor : 'seeds';
+  const k = it.kind === 'fish' ? 'fish' : it.kind === 'crop' ? 'fruit' : it.kind === 'bait' ? id : it.kind === 'feed' ? 'feed' : it.kind === 'fert' ? 'fert' : it.kind === 'decor' ? it.decor : it.kind === 'wood' ? 'wood' : 'seeds';   // RANCH: wood
   return `<span class="ic" style="background:${col}22;border:2px solid ${col}">${svg(k, col, 22)}</span>`;
 }
 function renderBag() {
@@ -3832,7 +3966,7 @@ function renderBag() {
           + (open ? `<div class="bkinds">${order.map(x => `<div class="bkind${ITEMS[x].special ? ' sp-' + ITEMS[x].special : ''}">${itemIcon(x)}<b>${ITEMS[x].special ? SPECIAL[ITEMS[x].special].name : 'Plain'}</b><span>×${S.inv[x]}</span><small><span class="scoin sm"></span>${ITEMS[x].price}</small></div>`).join('')}</div>` : '');
       }
     }
-    return `<div class="row">${itemIcon(id)}<div class="nm">${it.name}<small style="color:${r.color}">${it.kind === 'fish' || it.kind === 'crop' ? r.label + ' · ' + it.price + ' coins each' : it.kind === 'bait' ? 'Bait' : it.kind === 'feed' ? 'Animal feed' : it.kind === 'fert' ? `Makes a crop ${FERT.minutes} min faster` : it.kind === 'decor' ? 'Decor' : r.label}</small></div><div class="ct">×${S.inv[id]}</div></div>`;
+    return `<div class="row">${itemIcon(id)}<div class="nm">${it.name}<small style="color:${r.color}">${it.kind === 'fish' || it.kind === 'crop' ? r.label + ' · ' + it.price + ' coins each' : it.kind === 'bait' ? 'Bait' : it.kind === 'feed' ? 'Animal feed' : it.kind === 'wood' ? 'For building' : it.kind === 'fert' ? `Makes a crop ${FERT.minutes} min faster` : it.kind === 'decor' ? 'Decor' : r.label}</small></div><div class="ct">×${S.inv[id]}</div></div>`;
   }).join('') : '<div class="empty">Your bag is empty. Go fishing or farming!</div>';
   document.getElementById('bagCollection').textContent = `Fish book: ${dex.foundCount()} of ${dex.totalCount()} found.`   /* FISHING */;
 }
@@ -3867,6 +4001,8 @@ document.querySelectorAll('[data-dbg]').forEach(b => b.addEventListener('click',
   if (!settings.debug) return;
   const k = b.dataset.dbg;
   if (k === 'coins') { S.coins += 1000; toast('+1,000 coins'); }
+  if (k === 'lake') { let n = 0; while (S.level < 8 && n++ < 900) addXP(20); S.lots = ['back1', 'back2']; S.tools = [...GEAR_ORDER]; S.coins += 3000; addItem('wood', 45); refreshLots(); renderFarmTray(); renderHotbar(); commit(); toast('Lake test: both lake lots, all tools, +3,000 coins, +45 wood'); }   // RANCH
+  if (k === 'ranch') { let n = 0; while (S.level < 6 && n++ < 600) addXP(20); S.coins += 3000; addItem('wood', 20); renderHotbar(); toast('Ranch test: town level 6, +3,000 coins, +20 wood'); }   // RANCH   // RANCH (try/ranch): the sheep wool test field
   if (k === 'seeds') { for (const id of CROP_ORDER) addItem(CROPS[id].seed, 5); toast('+5 of every seed'); }
   if (k === 'bait') { addItem('worm', 10); addItem('shrimp', 10); addItem('lure', 3); toast('+10 worms, +10 shrimp, +3 glow lures'); }
   if (k === 'kit') { giveStarterKit(); toast('Starter decor kit added'); }
@@ -4110,6 +4246,8 @@ function update(dt) {
     { const bx = np.x - BOARD.x, bz = np.z - BOARD.z; if (Math.abs(bx) < 0.8 && Math.abs(bz) < 0.3) { np.x = player.pos.x; np.z = player.pos.z; } }
     store.block(np, player.pos);   // STORE: the shop is solid; leaning on its door walks you in
     animals.block(np, player.pos);   // ANIMALS: the coop is solid
+    ranch.block(np, player.pos);   // RANCH: so are the cows
+    pen.block(np, player.pos);   // RANCH: and the cow pen
     const moved = Math.hypot(np.x - player.pos.x, np.z - player.pos.z) / Math.max(dt, 1e-4);   // ANIM: legs follow the real speed (a wall stops them)
     player.pos.copy(np);
     const yaw = Math.atan2(mv.x, mv.z);
@@ -4120,6 +4258,9 @@ function update(dt) {
   audio.frame(player.pos.x, player.pos.z, player.moving, onDock(player.pos.x, player.pos.z), currentTOD(), stepPhase());
   weather.frame(dt, elapsed, TOD[todKey], todKey);
   animals.frame(dt, elapsed);   // ANIMALS: hens wander, peck, follow and lay
+  ranch.frame(dt, elapsed);   // RANCH: the cows roam, graze and moo
+  pen.frame(dt, elapsed);   // RANCH: the pen, the milk can, driftwood
+  bridge.frame(dt, elapsed); tickWoodLot(dt);   // RANCH: the bridge's outline; trees growing back in the wood lot
   pets.frame(dt, elapsed);   // PETS: your pet follows, drifts, sleeps and swims
   if (player.moving) player.faceYaw = null;
   else if (player.faceYaw != null) {
@@ -4154,7 +4295,7 @@ function update(dt) {
     anim.pose(b);   // ANIM: run lean, idle breathing
   }
   if (body) { body.root.updateMatrixWorld(true); applyRodPose(dt); applyFarmPose(dt); }
-  setUse(pickUse() || animals.pickUse() || pets.pickUse());   // ANIMALS: Collect / Pet / Feed, only when nothing else wants the button. PETS: Adopt / Wake / Come, last in line
+  setUse(pen.driftUse() || pickUse() || bridge.pickUse() || pen.pickUse() || animals.pickUse() || ranch.pickUse() || pets.pickUse());   // ANIMALS: Collect / Pet / Feed, only when nothing else wants the button. PETS: Adopt / Wake / Come, last in line
   updateMarker(dt);
   updateLine(dt);
   updateMoonPath();
@@ -4332,6 +4473,17 @@ function frame() {
     busy: () => busyForLevelCard() || decor.on || !document.getElementById('levelUp').hidden || document.body.classList.contains('inmenu') });
   animals.init({ THREE, scene, camera, M, SCALE, groundY, player, get S() { return S; }, settings, ICON, cropIcon, plots, commit, addItem, invCount, addXP, toast, audio, svg, renderHotbar, currentTOD,
     respawnDecor: (rec) => { despawnDecor(rec); spawnDecor(rec); }, fenceZ: () => FENCE_Z, wet: (x, z) => spots.onBank(x, z), busy: () => decor.on || farm.mode !== 'off' || fishing.state !== 'idle' || ward.on || dlg.open });
+  // RANCH: what ranch.js borrows from this file
+  // RANCH: what pen.js and bridge.js borrow from this file
+  bridge.init({ THREE, scene, camera, groundY, player, get S() { return S; }, svg, commit, addItem, invCount, addXP, toast, audio, renderHotbar, lotOwned, busy: () => decor.on || farm.mode !== 'off' || fishing.state !== 'idle' || ward.on || dlg.open || store.inside() });
+  pen.init({ THREE, scene, camera, groundY, player, get S() { return S; }, settings, ICON, svg, cropIcon, commit, addItem, invCount, addXP, toast, audio, renderHotbar, walkable, solid: petSolid, fenceZ: () => FENCE_Z,
+    cellOK: (x, z) => decorCellOK(x + ',' + z), busy: () => decor.on || farm.mode !== 'off' || fishing.state !== 'idle' || ward.on || dlg.open || store.inside() });
+  ranch.init({ THREE, scene, camera, groundY, player, currentTOD, audio, plots, walkable, solid: petSolid, toast, commit, cropIcon, fenceZ: () => FENCE_Z, wet: (x, z) => spots.isWet(x, z) || spots.onBank(x, z),
+    lotOwned, lotBox: (id) => { const l = LOTS.find(q => q.id === id); return l ? { x0: -LOT_X + 1, x1: LOT_X - 1, z0: l.z0 + 0.5, z1: l.z1 - 0.5, lot: true } : null; },
+    // ground a wild animal can stand on in its lot, owned or not: not in a tree, rock, stump, log or bush (grass and mushrooms are fine)
+    wildFree: (x, z) => { const w = weedCells.get(cellKey({ x: Math.floor(x), z: Math.floor(z) })); return !(w && w.some(o => !isCleared(o) && !/grass|mushroom/.test(o.userData.kind))); },
+    decorAt: (x, z) => S.decor.some(r => { const [w, d] = footprint(r.id, r.r || 0); return x > r.x - 0.3 && x < r.x + w + 0.3 && z > r.z - 0.3 && z < r.z + d + 0.3; }),
+    busy: () => decor.on || farm.mode !== 'off' || fishing.state !== 'idle' || ward.on || dlg.open || store.inside() });
   // PETS: everything pets.js borrows from this file (before saved decor is put back: the fish bowl is decor)
   pets.init({ THREE, scene, camera, groundY, floorY, parseGLB, player, get S() { return S; }, ICON, svg, commit, addItem, invCount, addXP, toast, audio, renderHotbar, currentTOD, walkable, solid: petSolid, fishing, addSplash, WATER_Y, DOCK,
     rest: () => grass.on && body && body.sit && body.sit.w > 0.6 ? { x: player.pos.x, z: player.pos.z, yaw: player.yaw } : null,   // SIT-GRASS: where the pet curls up
@@ -4374,7 +4526,7 @@ function frame() {
   if (S.look && !S.look.blank && S.look.pack === undefined) { S.look.pack = 'day'; S.look.packColor = '#f2a531'; setLook(body, S.look); }   // v0.1.150: looks made before the backpack get one (take it off in the Wardrobe)
   syncPackBtn();
   window.__ready = true;
-  window.__tidewell = { renderer, farmApply, animals, sit, grass, onGrass, nearAnimals, get pike() { return pike; }, get worldRod() { return worldRod; }, get rodState() { return rodState; }, scenery, pets, get merchant() { return merchant; }, THREE, scene, sun, hemi, TOD, camera, player, get S() { return S; }, fishing, settings, decor, cropIcon, farm, get body() { return body; }, fishIcon, spots, dex, tackle, reel, farmToolMesh, plots, lotView, get clr() { return clr; }, inRock, get dig() { return digModels; }, setLook: (l) => { for (const b of Object.values(bodies)) setLook(b, l); }, joy };   // used by tools/ (screenshots, tests)
+  window.__tidewell = { get castDbg() { return { state: fishing.state, land: [fishing.land.x, fishing.land.z], tip: [tipW.x, tipW.z], far: (() => { const p = castTargetFar(); return [p.x, p.z]; })() }; }, selectTool, renderer, farmApply, animals, ranch, pen, bridge, sit, grass, onGrass, nearAnimals, get pike() { return pike; }, get worldRod() { return worldRod; }, get rodState() { return rodState; }, scenery, pets, get merchant() { return merchant; }, THREE, scene, sun, hemi, TOD, camera, player, get S() { return S; }, fishing, settings, decor, cropIcon, farm, get body() { return body; }, fishIcon, spots, dex, tackle, reel, farmToolMesh, plots, lotView, get clr() { return clr; }, inRock, get dig() { return digModels; }, setLook: (l) => { for (const b of Object.values(bodies)) setLook(b, l); }, joy };   // used by tools/ (screenshots, tests)
   clock.getDelta();
   requestAnimationFrame(frame);
   // Everything else loads quietly in the background, one pack at a time so the game stays smooth:
@@ -4383,6 +4535,8 @@ function frame() {
   // sprout stay only as a safety net for a very slow connection.)
   setTimeout(async () => {
     await ensureFish();
+    pen.start(); bridge.start();   // RANCH: the pen and Nell's ranch items (before the cows, which live in it), and the bridge
+    ranch.start();   // RANCH: the cows, built in code (no pack to load)
     animals.start();   // ANIMALS: hens, eggs and the bubble are built here, in the background (before the shop's inside, which lists them)
     pets.start();   // PETS: the pet and its buttons, built in code (no pack to load)
     await tackle.preload();   // TACKLE: rods, worm, lure, jetty and steps load quietly right after the fish

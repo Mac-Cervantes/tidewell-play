@@ -9,7 +9,7 @@ import { BAIT_HELP } from './data.js';
 let A = null, THREE = null;
 
 // ---------- the river and the lake (math only: also used by the ground before init) ----------
-export const RIVER = { x: -14.7, amp: 0.3, half: 1.6, bank: 0.8, depth: 0.8, zEnd: 35.5 };   // runs from the woods behind the lots down to the sea
+export const RIVER = { x: -14.7, amp: 0.3, half: 1.6, bank: 0.8, depth: 0.8, zEnd: 42.25 };   // 42.25: the lots reach one strip further back since the lake lot became two strips deep   // runs from the woods behind the lots down to the sea
 // the far bank's edge moved this much left of where it was in v0.1.57 (things on the far side move with it)
 export const innerBank = (z) => riverX(z) + RIVER.half + RIVER.bank;   // the home side's dry edge
 // the camera leans left as you near the river, by as much as the river grew, so its far bank stays in view
@@ -19,7 +19,9 @@ export const farShift = () => (RIVER.x - RIVER.half - RIVER.bank) - (-15.5);
 export const RIVER_ROCKS = [{ z: -1.4, s: 1 }, { z: 3.4, s: -1 }, { z: 8.6, s: 1 }, { z: 13.8, s: -1 }, { z: 19.5, s: 1 }, { z: 25.5, s: -1 }, { z: 31, s: 1 }]
   .map(r => ({ ...r, x: RIVER.x + Math.sin(r.z * 0.5) * RIVER.amp + r.s * RIVER.half * 0.5 }));
 export const nearRocks = (x, z) => RIVER_ROCKS.some(r => Math.hypot(r.x - x, r.z - z) < 1.8);
-export const LAKE = { x: -8.2, z: 17.7, rx: 5.7, rz: 2.5, lot: 'back2' };                    // the left half of lot 2 (the thicket)
+// RANCH (try/ranch, Mac Nov 26: "Let's make it two lots big and connected to the river"): the lake now lies across the thicket and
+// the old woods (lots 2 and 3), crosses the path and runs into the river on its left. It was { x: -8.2, z: 17.7, rx: 5.7, rz: 2.5 }.
+export const LAKE = { x: -4.0, z: 21.0, rx: 11.4, rz: 5.6, lot: 'back2' };
 const smooth = (a, b, t) => { t = Math.min(1, Math.max(0, (t - a) / (b - a))); return t * t * (3 - 2 * t); };
 export const riverX = (z) => RIVER.x + Math.sin(z * 0.5) * RIVER.amp;
 function riverWet(x, z) {
@@ -34,7 +36,7 @@ function lakeWet(x, z) {
   return 1 - smooth(0.78, 1.08, e);
 }
 // 0 on dry land, rising over the sandy bank, 1 in open fresh water
-export function wetness(x, z) { return x > -1.5 ? 0 : Math.max(riverWet(x, z), lakeWet(x, z)); }
+export function wetness(x, z) { return x > 10.8 ? 0 : Math.max(riverWet(x, z), lakeWet(x, z)); }   // RANCH: the lake reaches past the path now (was x > -1.5)
 export const carve = (x, z) => wetness(x, z) * RIVER.depth;   // how far the ground drops (m)
 export const isWet = (x, z) => wetness(x, z) > 0.42;          // water: you can't walk here
 export const onBank = (x, z) => wetness(x, z) > 0.02;         // bank or water: no tilling, decor, weeds or dig spots
@@ -48,16 +50,24 @@ export function placeAt(lx, lz, px, pz, onDock) {
   return onDock && pz < -6.5 ? 'dock' : 'beach';   // the far half of the dock reaches the deep water
 }
 // Is there fresh water within a cast of (px, pz)? Returns where the bobber should land, or null.
+// The bobber lands at least MIN_CAST from you when the water reaches that far: standing right at the water's edge (or on the
+// jetty or the bridge) it used to land 1.1 m out, nearer than the rod's tip, 1.4 m out (Mac, Nov 27: "the bobber goes behind
+// the tip of the rod sometimes").
+const MIN_CAST = 2.6;
 function probe(px, pz, dx, dz) {
-  for (let t = 0.5; t <= 4; t += 0.25) if (wetness(px + dx * t, pz + dz * t) > 0.9) return { x: px + dx * (t + 0.6), z: pz + dz * (t + 0.6), t };
+  for (let t = 0.5; t <= 4; t += 0.25) if (wetness(px + dx * t, pz + dz * t) > 0.9) {
+    let d = t + 0.6;
+    for (let e = d + 0.2; e <= MIN_CAST + 0.01; e += 0.2) { if (wetness(px + dx * e, pz + dz * e) > 0.9) d = e; else break; }
+    return { x: px + dx * d, z: pz + dz * d, t };
+  }
   return null;
 }
 export function freshTarget(px, pz) {
-  if (px > -0.5) return null;
+  if (px > 12) return null;   // RANCH: the lake's right shore (was -0.5)
   let best = null;
   if (pz > -3.0 && pz < RIVER.zEnd - 3) { const s = Math.sign(riverX(pz) - px) || -1, r = probe(px, pz, s, 0); if (r) best = r; }
   const lx = LAKE.x - px, lz = LAKE.z - pz, ld = Math.hypot(lx, lz);
-  if (ld < 12 && ld > 0.01) { const r = probe(px, pz, lx / ld, lz / ld); if (r && (!best || r.t < best.t)) best = r; }
+  if (ld < 17 && ld > 0.01) { const r = probe(px, pz, lx / ld, lz / ld); if (r && (!best || r.t < best.t)) best = r; }
   return best;
 }
 
@@ -109,8 +119,8 @@ function buildBucket() {
 }
 // the fresh water: one flat sheet under the land where the river and lake are dug out, same look as the sea
 function buildFreshWater() {
-  const geo = new THREE.PlaneGeometry(17, 31, 17, 31);
-  geo.rotateX(-Math.PI / 2); geo.translate(-9.5, A.WATER_Y, 22);   // x -18..-1, z 6.5..37.5 (the sea's own sheet reaches z 7)
+  const geo = new THREE.PlaneGeometry(29, 38, 29, 38);
+  geo.rotateX(-Math.PI / 2); geo.translate(-3.5, A.WATER_Y, 25.5);   // x -18..11, z 6.5..44.5 (the sea's own sheet reaches z 7); RANCH: wider, for the big lake
   const m = new THREE.Mesh(geo, A.waterMat); m.receiveShadow = true; A.scene.add(m);
 }
 
@@ -178,6 +188,8 @@ export function frame() {
 export function sweepSave() {
   const S = A.S;
   S.plots = (S.plots || []).filter(p => !onBank(p.x + 0.5, p.z + 0.5));
-  S.decor = (S.decor || []).filter(d => { if (!onBank(d.x + 0.5, d.z + 0.5)) return true; A.addItem('decor_' + d.id, 1); return false; });
+  let back = 0;
+  S.decor = (S.decor || []).filter(d => { if (!onBank(d.x + 0.5, d.z + 0.5)) return true; A.addItem('decor_' + d.id, 1); back++; return false; });
+  if (back) setTimeout(() => A.toast(`The lake has grown! ${back} thing${back > 1 ? 's' : ''} from its shore went back in your bag`), 2500);   // RANCH: tell the player why
   if (S.pos && isWet(S.pos[0], S.pos[1])) S.pos = null;
 }

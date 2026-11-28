@@ -100,13 +100,13 @@ function showRod(id) {
 }
 
 // ---------- the lake jetty and the steps onto the dock ----------
-const JETTY = { x: -5.2, z: 17.7, half: 2.12, wide: 0.74, base: -0.62, scale: 0.2, top: 3.83 };   // Dock_Long_NoRope, out from the lake's path-side shore
+const JETTY = { x: -6.0, z: 17.1, half: 2.12, wide: 0.74, base: -0.62, scale: 0.2, top: 3.83 };   // Dock_Long_NoRope; RANCH: out from the big lake's near shore, left of the path (it ran along x from the old lake's path-side shore at -5.2, 17.7)
 let jetty = null;
 function buildJetty() {
-  jetty = M.Dock_Long_NoRope.clone(true); jetty.scale.setScalar(JETTY.scale); jetty.rotation.y = Math.PI / 2;
+  jetty = M.Dock_Long_NoRope.clone(true); jetty.scale.setScalar(JETTY.scale); jetty.rotation.y = 0;
   jetty.position.set(JETTY.x, JETTY.base, JETTY.z); A.scene.add(jetty);
 }
-export const onDeck = (x, z) => !!jetty && Math.abs(x - JETTY.x) < JETTY.half && Math.abs(z - JETTY.z) < JETTY.wide;
+export const onDeck = (x, z) => !!jetty && Math.abs(z - JETTY.z) < JETTY.half && Math.abs(x - JETTY.x) < JETTY.wide;
 export const deckY = (x, z) => (onDeck(x, z) ? JETTY.base + JETTY.top * JETTY.scale : null);
 function buildSteps() {
   const d = A.DOCK, s = M.Dock_Stairs.clone(true);
